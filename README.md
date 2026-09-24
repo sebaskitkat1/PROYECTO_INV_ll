@@ -1,61 +1,86 @@
-# CaféData — Sistema de Análisis de Datos (Escritorio)
+# cafédata — tu café en números (Escritorio)
 
-Adaptación a aplicación de escritorio (Python + PySide6) del prototipo
-web original. Es una **base funcional**, pensada para irse ampliando
-progresivamente: navegación entre pantallas, KPIs, tablas y gráficas
-ya funcionan con datos de ejemplo; lo que falta (conectar datos reales,
-filtros funcionales, autenticación real, etc.) queda señalado como
-siguiente paso.
+App de escritorio en Python + PySide6 para ver ventas, inventario y pronóstico
+sin pelearte con hojas de cálculo. Funciona con datos de ejemplo y, si cargas
+un CSV, lo usa de verdad en resumen y ventas.
+
+Rama actual: `muse-spark/mejoras-p1` — prototipo V2 con UI cálida minimalista
+y corrección de errores de la V1.
 
 ## Instalación
 
 Requiere Python 3.10+.
 
-```bash
+```powershell
+cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python -m venv venv
-source venv/bin/activate      # En Windows: venv\Scripts\activate
+.\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 ## Ejecución
 
-```bash
+```powershell
+cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python main.py
 ```
 
-## Estructura del proyecto
+Sin CSV entra con datos de ejemplo. Con CSV (`Login > Cargar CSV`) el resumen
+y ventas calculan desde tu archivo.
+
+Formato CSV esperado (nombres flexibles, minúsculas):
+`nombre / producto`, `cantidad`, `total / ingresos / ventas / monto`,
+opcional `categoria`, `margen`, `precio`, `fecha`.
+
+## Estructura
 
 ```
-main.py                        Punto de entrada
+main.py
 app/
-  main_window.py                Ventana principal y navegación (QStackedWidget)
-  styles.py                     Paleta de colores y hoja de estilos (QSS) global
+  main_window.py          Ventana y navegación (QStackedWidget)
+  styles.py               Sistema visual cálido (papel, espresso, caramelo)
   data/
-    mock_data.py                 Datos de ejemplo (equivalente a mockData.ts)
+    mock_data.py          Datos de ejemplo
+    app_state.py          Sesión: df, usuario, última carga (singleton)
   widgets/
-    kpi_card.py                  Tarjeta de indicador (KPI) reutilizable
-    nav_bar.py                   Barra superior de navegación reutilizable
-    mpl_canvas.py                 Lienzo de matplotlib embebido y estilizado
+    kpi_card.py           KPI minimalista con píldora de cambio
+    nav_bar.py            Topbar 60px + nav segmentada
+    mpl_canvas.py         Canvas matplotlib tono papel
   screens/
-    login_screen.py               Login + carga de CSV
-    dashboard_screen.py           Resumen del día, KPIs y gráficas
-    sales_screen.py               Análisis de ventas (tabla + dispersión)
-    inventory_screen.py           Inventario (tabla + rotación + Pareto/ABC)
-    prediction_screen.py          Predicción de demanda a 30 días
+    login_screen.py       Acceso + carga CSV con validación
+    dashboard_screen.py   Hoy, KPIs y 2 gráficas
+    sales_screen.py       Filtros, buscador, tabla y dispersión
+    inventory_screen.py   Stock editable, alertas y ABC real
+    prediction_screen.py  Histórico vs pronóstico 30 días
 ```
 
-## Qué ya funciona
+## Qué hace la V2
 
-- Navegación completa entre las 5 pantallas (Login, Dashboard, Ventas,
-  Inventario, Predicción), replicando la estructura del prototipo web.
-- Selector de archivo CSV en el login: lo lee con `pandas` y valida que
-  se pueda abrir (por ahora las pantallas siguen mostrando datos de
-  ejemplo; conectar ese CSV a las gráficas es el siguiente paso natural).
-- Todas las gráficas (líneas, barras, dispersión) con `matplotlib`
-  embebido, replicando los datos y la paleta de colores del original.
-- Tablas de ventas, inventario y predicción con formato, colores por
-  estado/tendencia y orden por columna (inventario).
-- Diseño visual (colores, tipografía, tarjetas) tomado del prototipo
-  Figma/React (`#1F4E78` como color primario, tarjetas con sombra sutil, etc.).
+- **Sesión real:** `AppState` guarda el CSV y el usuario. Ya no se pierde
+  el DataFrame del login. El footer muestra la fuente (`ejemplo` o `tu.csv (N filas)`).
+- **Resumen:** si hay CSV, ventas hoy, ticket y conteo salen de tu columna
+  `total/ingresos/ventas`; si no, usa el ejemplo.
+- **Ventas:** filtro por categoría + buscador que sí filtran tabla y gráfica,
+  tabla ordenable, exportación del filtrado a CSV, dispersión con top anotado.
+  Categorías del ejemplo: Bebidas / Alimentos / Postres. Período cableado
+  para CSV con fecha.
+- **Inventario:** stock actual/mínimo editable con doble clic, estado
+  recalculado (`critico < minimo`, `advertencia < minimo*1.25`), resumen y
+  alerta `X por pedir` al día, orden de compra en CSV, restablecer a ejemplo.
+  Sorting numérico real, rotación con alta rotación marcada y Pareto ABC con
+  % acumulado, línea 80% y clases A/B/C.
+- **Pronóstico:** serie ordenada sin duplicados ni espacios
+  (`25 Sep … Hoy … 25 Oct`), línea histórica espresso + pronóstico caramelo
+  punteado, tabla con `+X%` en salvia.
+- **UI nueva:** papel `#F7F3ED`, tinta espresso, acento caramelo. Sin azul
+  `#1F4E78`, sin mayúsculas gritadas, sin iconos unicode. Topbar fina,
+  nav en píldora, cards radio 14px sin sombra, tablas con hairline cálida,
+  botones 34px en sentence case.
 
-##
+## Lo que sigue
+
+1. Auth real con hash + roles (hoy solo valida no vacío).
+2. Filtro por fecha real en ventas cuando el CSV traiga `fecha`.
+3. Modelo de pronóstico sobre tu CSV (promedio móvil / regresión).
+4. Módulo `db_source.py` para MySQL/Postgres con la misma interfaz que `mock_data`.
+5. Empaquetado con `pyinstaller` desde `main.py`.
