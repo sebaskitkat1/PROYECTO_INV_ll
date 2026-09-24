@@ -12,7 +12,6 @@ y corrección de errores de la V1.
 Requiere Python 3.10+.
 
 ```powershell
-cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
