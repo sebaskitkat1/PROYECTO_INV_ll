@@ -1,4 +1,4 @@
-"""Barra superior reutilizable: título, navegación entre pantallas y salir."""
+"""Barra superior minimalista: marca, nav segmentada y salida discreta."""
 from __future__ import annotations
 
 from typing import Callable, Optional
@@ -6,9 +6,6 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from app import styles
-
-# Pantallas disponibles y su etiqueta visible en la barra de navegación.
 NAV_ITEMS = [
     ("dashboard", "Inicio"),
     ("sales", "Ventas"),
@@ -18,12 +15,6 @@ NAV_ITEMS = [
 
 
 class NavBar(QFrame):
-    """
-    Encabezado superior común a Dashboard, Ventas, Inventario y
-    Predicción. Muestra el título de la pantalla actual, un menú de
-    navegación y el botón de salir (logout).
-    """
-
     def __init__(
         self,
         title: str,
@@ -35,50 +26,61 @@ class NavBar(QFrame):
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
-        self.setStyleSheet(f"background-color: {styles.BG_WHITE}; border-bottom: 1px solid {styles.BORDER};")
+        self.setProperty("role", "topbar")
+        self.setFixedHeight(60)
 
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(20, 10, 20, 10)
+        outer.setContentsMargins(20, 0, 20, 0)
+        outer.setSpacing(16)
 
-        # --- Título (+ botón "volver" opcional) ---
-        title_row = QHBoxLayout()
-        title_row.setSpacing(8)
+        # Marca pequeña + título
+        brand_col = QVBoxLayout()
+        brand_col.setSpacing(0)
+        brand_col.setContentsMargins(0, 0, 0, 0)
+
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(10)
+        brand_row.setContentsMargins(0, 0, 0, 0)
 
         if on_back:
-            back_btn = QPushButton("\u2190")
-            back_btn.setProperty("role", "link")
-            back_btn.setFixedWidth(28)
+            back_btn = QPushButton("Volver")
+            back_btn.setProperty("role", "ghost")
+            back_btn.setCursor(Qt.PointingHandCursor)
             back_btn.clicked.connect(on_back)
-            title_row.addWidget(back_btn)
+            brand_row.addWidget(back_btn)
 
-        title_col = QVBoxLayout()
-        title_col.setSpacing(0)
+        mark = QLabel("cafédata.")
+        mark.setStyleSheet("font-size: 13px; font-weight: 700; color: #2A1E17; letter-spacing: -0.3px;")
+        brand_row.addWidget(mark)
+
         title_label = QLabel(title)
         title_label.setProperty("role", "pageTitle")
+        brand_row.addWidget(title_label)
+        brand_col.addLayout(brand_row)
+
         subtitle_label = QLabel(subtitle)
         subtitle_label.setProperty("role", "pageSubtitle")
-        title_col.addWidget(title_label)
-        title_col.addWidget(subtitle_label)
-        title_row.addLayout(title_col)
+        brand_col.addWidget(subtitle_label)
 
-        outer.addLayout(title_row)
+        outer.addLayout(brand_col)
         outer.addStretch()
 
-        # --- Navegación entre pantallas ---
-        nav_row = QHBoxLayout()
-        nav_row.setSpacing(4)
+        # Nav segmentada en píldora
+        seg = QFrame()
+        seg.setProperty("role", "segNav")
+        seg_layout = QHBoxLayout(seg)
+        seg_layout.setContentsMargins(4, 4, 4, 4)
+        seg_layout.setSpacing(2)
         for screen_key, label in NAV_ITEMS:
             btn = QPushButton(label)
             btn.setProperty("role", "navActive" if screen_key == active_screen else "nav")
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked=False, s=screen_key: on_navigate(s))
-            nav_row.addWidget(btn)
-        outer.addLayout(nav_row)
+            seg_layout.addWidget(btn)
+        outer.addWidget(seg)
 
-        outer.addSpacing(12)
-
-        # --- Salir ---
-        logout_btn = QPushButton("SALIR")
-        logout_btn.setProperty("role", "link")
+        logout_btn = QPushButton("Salir")
+        logout_btn.setProperty("role", "ghost")
+        logout_btn.setCursor(Qt.PointingHandCursor)
         logout_btn.clicked.connect(on_logout)
         outer.addWidget(logout_btn)

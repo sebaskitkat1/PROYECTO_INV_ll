@@ -21,9 +21,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CaféData — Sistema de Análisis")
-        self.resize(1180, 780)
-        self.setMinimumSize(900, 600)
+        self.setWindowTitle("cafédata — tu café en números")
+        self.resize(1200, 800)
+        self.setMinimumSize(960, 640)
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)

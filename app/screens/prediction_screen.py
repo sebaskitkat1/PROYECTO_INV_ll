@@ -40,8 +40,8 @@ class PredictionScreen(QWidget):
 
         root.addWidget(
             NavBar(
-                title="Predicción de Demanda",
-                subtitle="Café Mi Favorito · Próximos 30 días",
+                title="Pronóstico",
+                subtitle="Próximos 30 días",
                 active_screen="prediction",
                 on_navigate=on_navigate,
                 on_logout=on_logout,
@@ -53,8 +53,8 @@ class PredictionScreen(QWidget):
         scroll.setWidgetResizable(True)
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(24, 20, 24, 20)
-        content_layout.setSpacing(16)
+        content_layout.setContentsMargins(28, 24, 28, 24)
+        content_layout.setSpacing(14)
 
         content_layout.addWidget(self._build_info_banner())
         content_layout.addWidget(self._build_line_chart_card())
@@ -70,19 +70,14 @@ class PredictionScreen(QWidget):
         banner = QFrame()
         banner.setProperty("role", "infoBanner")
         layout = QHBoxLayout(banner)
-        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setContentsMargins(16, 12, 16, 12)
 
-        icon = QLabel("\u2139")
-        icon.setStyleSheet(f"color: {styles.PRIMARY}; font-size: 15px;")
-        icon.setAlignment(Qt.AlignTop)
         text = QLabel(
-            "Esta es una estimación basada en los últimos 3 meses de datos. "
-            "Úsela como referencia para compras y planificación, no como certeza absoluta."
+            "Estimación con los últimos 3 meses. Úsala para compras y turnos, no como cifra exacta."
         )
         text.setWordWrap(True)
-        text.setStyleSheet(f"color: {styles.TEXT_GRAY}; font-size: 12px;")
+        text.setStyleSheet(f"color: {styles.MUTED}; font-size: 12.5px;")
 
-        layout.addWidget(icon)
         layout.addWidget(text, stretch=1)
         return banner
 
@@ -92,12 +87,12 @@ class PredictionScreen(QWidget):
         card = QFrame()
         card.setProperty("role", "card")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(18, 16, 18, 16)
 
-        title = QLabel("Demanda Histórica vs Predicción (30 días)")
-        title.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {styles.TEXT_DARK};")
-        subtitle = QLabel("Línea sólida = datos reales · Línea punteada = pronóstico")
-        subtitle.setStyleSheet(f"font-size: 11px; color: {styles.TEXT_LIGHT_GRAY};")
+        title = QLabel("Histórico y pronóstico · 30 días")
+        title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
+        subtitle = QLabel("Continua lo que ya vendiste, punteada lo esperado")
+        subtitle.setStyleSheet(f"font-size: 12px; color: {styles.MUTED};")
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
@@ -109,11 +104,11 @@ class PredictionScreen(QWidget):
 
         x = list(range(len(dias)))
         canvas.axes.plot(
-            x, historico, color=styles.PRIMARY, linewidth=2, marker="o", markersize=4, label="Histórico"
+            x, historico, color=styles.ESPRESSO, linewidth=2.2, marker="o", markersize=4, label="Histórico"
         )
         canvas.axes.plot(
-            x, prediccion, color=styles.LIGHT_BLUE_BORDER, linewidth=2, linestyle="--",
-            marker="o", markersize=4, label="Predicción (30 días)",
+            x, prediccion, color=styles.CARAMEL, linewidth=2, linestyle="--",
+            marker="o", markersize=4, label="Pronóstico",
         )
         canvas.axes.set_xticks(x)
         canvas.axes.set_xticklabels(dias, rotation=40, fontsize=7, ha="right")
@@ -133,13 +128,13 @@ class PredictionScreen(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         header = QFrame()
-        header.setStyleSheet(f"background-color: {styles.BG_LIGHTER}; border-bottom: 1px solid {styles.BORDER};")
+        header.setStyleSheet(f"background-color: {styles.SURFACE_WARM}; border-bottom: 1px solid {styles.LINE};")
         header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(16, 12, 16, 12)
-        title = QLabel("Top Productos Predichos")
-        title.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {styles.TEXT_DARK};")
-        subtitle = QLabel("Crecimiento esperado próximo mes")
-        subtitle.setStyleSheet(f"font-size: 11px; color: {styles.TEXT_LIGHT_GRAY};")
+        header_layout.setContentsMargins(18, 14, 18, 14)
+        title = QLabel("Qué esperar el próximo mes")
+        title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
+        subtitle = QLabel("Crecimiento por producto")
+        subtitle.setStyleSheet(f"font-size: 12px; color: {styles.MUTED};")
         header_layout.addWidget(title)
         header_layout.addWidget(subtitle)
         layout.addWidget(header)
@@ -160,14 +155,14 @@ class PredictionScreen(QWidget):
             table.setItem(r, 1, self._right_aligned(f"${row['actual']:,}"))
 
             predicho_item = self._right_aligned(f"${row['predicho']:,}")
-            predicho_item.setForeground(QColor(styles.PRIMARY))
+            predicho_item.setForeground(QColor(styles.ESPRESSO))
             font = predicho_item.font()
             font.setBold(True)
             predicho_item.setFont(font)
             table.setItem(r, 2, predicho_item)
 
-            crecimiento_item = self._right_aligned(f"\u2191 {row['crecimiento']}%")
-            crecimiento_item.setForeground(QColor(styles.SUCCESS))
+            crecimiento_item = self._right_aligned(f"+{row['crecimiento']}%")
+            crecimiento_item.setForeground(QColor(styles.SAGE))
             font = crecimiento_item.font()
             font.setBold(True)
             crecimiento_item.setFont(font)

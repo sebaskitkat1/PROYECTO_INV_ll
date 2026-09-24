@@ -86,19 +86,21 @@ def get_pareto_data() -> list[dict]:
 
 
 def get_prediction_data() -> list[dict]:
+    # Serie ordenada cronológicamente: 6 días históricos + Hoy (pivote)
+    # + 6 días de pronóstico. Sin espacios/duplicados en etiquetas.
     return [
-        {"dia": "01 Oct", "historico": 4200, "prediccion": None},
-        {"dia": "05 Oct", "historico": 4850, "prediccion": None},
-        {"dia": "10 Oct", "historico": 5100, "prediccion": None},
-        {"dia": "15 Oct", "historico": 4700, "prediccion": None},
-        {"dia": "20 Oct", "historico": 5300, "prediccion": None},
         {"dia": "25 Sep", "historico": 4600, "prediccion": None},
+        {"dia": "27 Sep", "historico": 4200, "prediccion": None},
+        {"dia": "29 Sep", "historico": 4850, "prediccion": None},
+        {"dia": "01 Oct", "historico": 5100, "prediccion": None},
+        {"dia": "03 Oct", "historico": 4700, "prediccion": None},
+        {"dia": "05 Oct", "historico": 5300, "prediccion": None},
         {"dia": "Hoy", "historico": 5640, "prediccion": 5640},
-        {"dia": "30 Sep", "historico": None, "prediccion": 5720},
-        {"dia": "05 Oct ", "historico": None, "prediccion": 6100},
-        {"dia": "10 Oct ", "historico": None, "prediccion": 5890},
-        {"dia": "15 Oct ", "historico": None, "prediccion": 6340},
-        {"dia": "20 Oct ", "historico": None, "prediccion": 6580},
+        {"dia": "08 Oct", "historico": None, "prediccion": 5720},
+        {"dia": "10 Oct", "historico": None, "prediccion": 6100},
+        {"dia": "12 Oct", "historico": None, "prediccion": 5890},
+        {"dia": "15 Oct", "historico": None, "prediccion": 6340},
+        {"dia": "18 Oct", "historico": None, "prediccion": 6580},
         {"dia": "25 Oct", "historico": None, "prediccion": 6210},
     ]
 
