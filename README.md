@@ -1,4 +1,4 @@
-# cafédata — tu café en números (Escritorio)
+# cafédata 
 
 App de escritorio en Python + PySide6 para ver ventas, inventario y pronóstico
 sin pelearte con hojas de cálculo. Funciona con datos de ejemplo y, si cargas
@@ -21,7 +21,6 @@ pip install -r requirements.txt
 ## Ejecución
 
 ```powershell
-cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python main.py
 ```
 
