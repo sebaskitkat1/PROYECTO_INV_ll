@@ -1,4 +1,4 @@
-"""Pantalla de gestión de inventario: existencias, rotación y curva ABC."""
+"""Pantalla de gestion de inventario: existencias, rotacion y curva ABC."""
 from __future__ import annotations
 
 from typing import Callable
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from app import styles
 from app.data import mock_data
+from app.data import store
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
 
@@ -35,7 +36,7 @@ ESTADO_ORDEN = {"critico": 0, "advertencia": 1, "optimo": 2}
 
 
 class NumericItem(QTableWidgetItem):
-    """Item que ordena por valor numérico (UserRole), no por texto."""
+    """Item que ordena por valor numerico (UserRole), no por texto."""
 
     def __lt__(self, other):
         try:
@@ -45,7 +46,7 @@ class NumericItem(QTableWidgetItem):
 
 
 class EstadoItem(QTableWidgetItem):
-    """Ordena por criticidad, no alfabéticamente."""
+    """Ordena por criticidad, no alfabeticamente."""
 
     def __lt__(self, other):
         try:
@@ -65,7 +66,7 @@ def calc_estado(stock_actual: int, stock_minimo: int) -> str:
 
 
 class InventoryScreen(QWidget):
-    """Pantalla de gestión de inventario y niveles de stock."""
+    """Pantalla de gestion de inventario y niveles de stock."""
 
     def __init__(
         self,
@@ -82,7 +83,7 @@ class InventoryScreen(QWidget):
         root.addWidget(
             NavBar(
                 title="Inventario",
-                subtitle="Qué pedir y qué rota",
+                subtitle="",
                 active_screen="inventory",
                 on_navigate=on_navigate,
                 on_logout=on_logout,
@@ -97,17 +98,14 @@ class InventoryScreen(QWidget):
         content_layout.setContentsMargins(28, 24, 28, 24)
         content_layout.setSpacing(14)
 
-        # Modelo editable en memoria (copia del mock para no mutar global)
-        self.inventory: list[dict] = [dict(r) for r in mock_data.get_inventory()]
+        # lista compartida: lo editado sigue ahi al volver
+        self.inventory: list[dict] = store.get_inventory()
 
         self.alert_banner = self._build_alert_banner()
         content_layout.addWidget(self.alert_banner)
         content_layout.addLayout(self._build_summary_row())
         self.table = self._build_table()
         content_layout.addWidget(self.table)
-        hint = QLabel("Doble clic en stock para corregir. Todo se recalcula solo.")
-        hint.setProperty("role", "micro")
-        content_layout.addWidget(hint)
         content_layout.addLayout(self._build_charts_row())
         content_layout.addLayout(self._build_actions_row())
         content_layout.addStretch()
@@ -206,7 +204,7 @@ class InventoryScreen(QWidget):
             w.writerows(sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]))
 
     def _reset_data(self) -> None:
-        self.inventory = [dict(r) for r in mock_data.get_inventory()]
+        self.inventory = store.reset_inventory()
         self._reload_table()
         self._refresh_summary_and_alert()
 
@@ -265,7 +263,7 @@ class InventoryScreen(QWidget):
         tbl.blockSignals(False)
 
     def _on_cell_changed(self, row: int, col: int) -> None:
-        # Solo columnas 1 y 2 son editables
+        # solo columnas 1 y 2 son editables
         if col not in (1, 2):
             return
         name = self.table.item(row, 0).text()
@@ -274,7 +272,7 @@ class InventoryScreen(QWidget):
             if new_val < 0:
                 raise ValueError
         except Exception:
-            self._reload_table()  # revierte texto inválido
+            self._reload_table()  # revierte texto invalido
             return
         for inv in self.inventory:
             if inv["nombre"] == name:
@@ -294,7 +292,7 @@ class InventoryScreen(QWidget):
         item.setData(Qt.UserRole, value)
         return item
 
-    # -- gráficas ----------------------------------------------------------
+    # -- graficas ----------------------------------------------------------
 
     def _build_charts_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -304,7 +302,7 @@ class InventoryScreen(QWidget):
         return row
 
     def _rotation_chart_card(self) -> QFrame:
-        card = self._chart_card("Rotación", "Menos días, más movimiento")
+        card = self._chart_card("Rotación")
         canvas = MplCanvas(height=2.6)
         data = mock_data.get_rotation_data()
         names = [d["nombre"] for d in data][::-1]
@@ -317,7 +315,7 @@ class InventoryScreen(QWidget):
         return card
 
     def _pareto_chart_card(self) -> QFrame:
-        card = self._chart_card("Qué deja más", "Barras lo que ingresa, línea lo acumulado")
+        card = self._chart_card("Qué deja más")
         canvas = MplCanvas(height=2.6)
         data = sorted(mock_data.get_pareto_data(), key=lambda d: d["ingresos"], reverse=True)
         names = [d["nombre"] for d in data]
@@ -336,7 +334,7 @@ class InventoryScreen(QWidget):
         ax2.axhline(80, color=styles.CARAMEL, linestyle="--", linewidth=1, alpha=0.7)
         ax2.set_ylim(0, 105)
         ax2.tick_params(labelsize=7, colors=styles.MUTED)
-        # Etiqueta clase A/B/C sobre cada barra
+        # etiqueta clase A/B/C sobre cada barra
         for i, (bar, pct) in enumerate(zip(bars, cum_pct)):
             clase = "A" if pct <= 80 else ("B" if pct <= 95 else "C")
             canvas.axes.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 80, clase,
@@ -346,7 +344,7 @@ class InventoryScreen(QWidget):
         return card
 
     @staticmethod
-    def _chart_card(title: str, subtitle: str) -> QFrame:
+    def _chart_card(title: str, subtitle: str = "") -> QFrame:
         card = QFrame()
         card.setProperty("role", "card")
         layout = QVBoxLayout(card)
@@ -354,8 +352,9 @@ class InventoryScreen(QWidget):
         layout.setSpacing(4)
         title_label = QLabel(title)
         title_label.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
-        subtitle_label = QLabel(subtitle)
-        subtitle_label.setStyleSheet(f"font-size: 12px; color: {styles.MUTED};")
         layout.addWidget(title_label)
-        layout.addWidget(subtitle_label)
+        if subtitle:
+            subtitle_label = QLabel(subtitle)
+            subtitle_label.setStyleSheet(f"font-size: 12px; color: {styles.MUTED};")
+            layout.addWidget(subtitle_label)
         return card

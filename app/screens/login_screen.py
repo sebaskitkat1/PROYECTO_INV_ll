@@ -1,13 +1,11 @@
-"""Acceso cálido y simple."""
+"""Acceso simple."""
 from __future__ import annotations
 
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QFileDialog,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -18,17 +16,11 @@ from PySide6.QtWidgets import (
 from app import styles
 from app.data.app_state import AppState
 
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
-
 
 class LoginScreen(QWidget):
     def __init__(self, on_login: Callable[[str], None], parent=None):
         super().__init__(parent)
         self.on_login = on_login
-        self.loaded_dataframe = None
 
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignCenter)
@@ -36,7 +28,7 @@ class LoginScreen(QWidget):
 
         card = QFrame()
         card.setProperty("role", "loginCard")
-        card.setFixedWidth(380)
+        card.setFixedWidth(360)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(12)
@@ -45,12 +37,7 @@ class LoginScreen(QWidget):
         brand.setAlignment(Qt.AlignCenter)
         brand.setStyleSheet("font-size: 26px; font-weight: 700; color: #2A1E17; letter-spacing: -0.6px;")
         layout.addWidget(brand)
-
-        subtitle = QLabel("Tus números de café, claros y al día")
-        subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setProperty("role", "pageSubtitle")
-        layout.addWidget(subtitle)
-        layout.addSpacing(8)
+        layout.addSpacing(4)
 
         layout.addWidget(self._field_label("Usuario o correo"))
         self.email_input = QLineEdit()
@@ -78,33 +65,15 @@ class LoginScreen(QWidget):
         self.login_button.setProperty("role", "primary")
         self.login_button.setFixedHeight(38)
         self.login_button.setCursor(Qt.PointingHandCursor)
+        self.login_button.setDefault(True)
         self.login_button.clicked.connect(self._handle_login)
         layout.addWidget(self.login_button)
 
-        sep = QLabel("o continúa con un archivo")
-        sep.setAlignment(Qt.AlignCenter)
-        sep.setProperty("role", "micro")
-        layout.addWidget(sep)
-
-        self.csv_button = QPushButton("Cargar CSV")
-        self.csv_button.setProperty("role", "secondary")
-        self.csv_button.setFixedHeight(38)
-        self.csv_button.setCursor(Qt.PointingHandCursor)
-        self.csv_button.clicked.connect(self._handle_csv_upload)
-        layout.addWidget(self.csv_button)
-
-        self.csv_status_label = QLabel("")
-        self.csv_status_label.setAlignment(Qt.AlignCenter)
-        self.csv_status_label.setStyleSheet(f"color: {styles.MUTED}; font-size: 12px;")
-        self.csv_status_label.setVisible(False)
-        layout.addWidget(self.csv_status_label)
-
-        hint = QLabel("CSV con columnas fecha, producto, cantidad y total")
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setProperty("role", "micro")
-        layout.addWidget(hint)
-
         outer.addWidget(card, alignment=Qt.AlignCenter)
+
+        # enter en cualquier campo entra directo
+        self.email_input.returnPressed.connect(self._handle_login)
+        self.password_input.returnPressed.connect(self._handle_login)
 
     @staticmethod
     def _field_label(text: str) -> QLabel:
@@ -116,8 +85,14 @@ class LoginScreen(QWidget):
         self.error_label.setVisible(False)
 
     def _handle_login(self) -> None:
-        if not self.email_input.text().strip() or not self.password_input.text().strip():
-            self.error_label.setText("Completa usuario y contraseña para entrar.")
+        email = self.email_input.text().strip()
+        password = self.password_input.text()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            self.error_label.setText("Ese correo no parece valido. Revisalo.")
+            self.error_label.setVisible(True)
+            return
+        if len(password) < 4:
+            self.error_label.setText("La contraseña debe tener al menos 4 caracteres.")
             self.error_label.setVisible(True)
             return
         self.error_label.setVisible(False)
@@ -130,25 +105,3 @@ class LoginScreen(QWidget):
         self.login_button.setText("Entrar")
         AppState.set_user(self.email_input.text())
         self.on_login("dashboard")
-
-    def _handle_csv_upload(self) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(self, "Seleccionar archivo CSV", "", "CSV (*.csv)")
-        if not file_path:
-            return
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-        row_count = None
-        if pd is not None:
-            try:
-                self.loaded_dataframe = pd.read_csv(file_path)
-                row_count = len(self.loaded_dataframe)
-                AppState.set_dataframe(self.loaded_dataframe, file_path)
-            except Exception:
-                self.loaded_dataframe = None
-                self.error_label.setText("No se pudo leer ese CSV. Entrarás con datos de ejemplo.")
-                self.error_label.setVisible(True)
-        status = f"{file_name}"
-        if row_count is not None:
-            status += f" · {row_count} filas · abriendo…"
-        self.csv_status_label.setText(status)
-        self.csv_status_label.setVisible(True)
-        QTimer.singleShot(900, self._finish_login)

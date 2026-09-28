@@ -1,8 +1,9 @@
-"""Ventana principal: administra la navegación entre pantallas."""
+"""Ventana principal: administra la navegacion entre pantallas."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
 
+from app.data.app_state import AppState
 from app.screens.dashboard_screen import DashboardScreen
 from app.screens.inventory_screen import InventoryScreen
 from app.screens.login_screen import LoginScreen
@@ -12,11 +13,11 @@ from app.screens.sales_screen import SalesScreen
 
 class MainWindow(QMainWindow):
     """
-    Ventana principal de la aplicación.
+    Ventana principal de la aplicacion.
 
     Usa un QStackedWidget para alternar entre pantallas, de forma
-    equivalente al estado `screen` que controlaba la navegación en la
-    versión web (src/App.tsx).
+    equivalente al estado `screen` que controlaba la navegacion en la
+    version web (src/App.tsx).
     """
 
     def __init__(self):
@@ -28,17 +29,16 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
-        # Login se construye una sola vez. Las demás pantallas se
-        # reconstruyen cada vez que se navega a ellas, para que en el
-        # futuro puedan reflejar datos recién cargados (por ejemplo, un
-        # CSV nuevo) sin necesidad de reiniciar la aplicación.
+        # login se construye una sola vez. Las demas pantallas se
+        # reconstruyen al navegar, asi toman los datos nuevos
+        # de la base sin reiniciar la app.
         self.screens: dict[str, object] = {}
         self._REBUILD_ON_NAVIGATE = {"dashboard", "sales", "inventory", "prediction"}
 
         self._build_login_screen()
         self.navigate("login")
 
-    # -- construcción de pantallas -----------------------------------
+    # -- construccion de pantallas -----------------------------------
 
     def _build_login_screen(self) -> None:
         screen = LoginScreen(on_login=self.navigate)
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         self.screens[key] = widget
         self.stack.addWidget(widget)
 
-    # -- navegación ----------------------------------------------------
+    # -- navegacion ----------------------------------------------------
 
     def navigate(self, screen_name: str) -> None:
         builders = {
@@ -84,4 +84,6 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.screens[screen_name])
 
     def logout(self) -> None:
+        # salir borra la sesion para que no quede el usuario anterior
+        AppState.clear()
         self.navigate("login")
