@@ -1,4 +1,3 @@
-# cafédata — tu café en números (Escritorio)
 
 App de escritorio en Python + PySide6 para ver ventas, inventario y pronóstico
 sin pelearte con hojas de cálculo. Funciona con datos de ejemplo y, si cargas
@@ -12,7 +11,6 @@ y corrección de errores de la V1.
 Requiere Python 3.10+.
 
 ```powershell
-cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
@@ -21,7 +19,6 @@ pip install -r requirements.txt
 ## Ejecución
 
 ```powershell
-cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python main.py
 ```
 
@@ -76,11 +73,3 @@ app/
   `#1F4E78`, sin mayúsculas gritadas, sin iconos unicode. Topbar fina,
   nav en píldora, cards radio 14px sin sombra, tablas con hairline cálida,
   botones 34px en sentence case.
-
-## Lo que sigue
-
-1. Auth real con hash + roles (hoy solo valida no vacío).
-2. Filtro por fecha real en ventas cuando el CSV traiga `fecha`.
-3. Modelo de pronóstico sobre tu CSV (promedio móvil / regresión).
-4. Módulo `db_source.py` para MySQL/Postgres con la misma interfaz que `mock_data`.
-5. Empaquetado con `pyinstaller` desde `main.py`.
