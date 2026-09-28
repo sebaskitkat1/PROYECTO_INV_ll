@@ -51,25 +51,4 @@ app/
     prediction_screen.py  Histórico vs pronóstico 30 días
 ```
 
-## Qué hace la V2
-
-- **Sesión real:** `AppState` guarda el CSV y el usuario. Ya no se pierde
-  el DataFrame del login. El footer muestra la fuente (`ejemplo` o `tu.csv (N filas)`).
-- **Resumen:** si hay CSV, ventas hoy, ticket y conteo salen de tu columna
-  `total/ingresos/ventas`; si no, usa el ejemplo.
-- **Ventas:** filtro por categoría + buscador que sí filtran tabla y gráfica,
-  tabla ordenable, exportación del filtrado a CSV, dispersión con top anotado.
-  Categorías del ejemplo: Bebidas / Alimentos / Postres. Período cableado
-  para CSV con fecha.
-- **Inventario:** stock actual/mínimo editable con doble clic, estado
-  recalculado (`critico < minimo`, `advertencia < minimo*1.25`), resumen y
-  alerta `X por pedir` al día, orden de compra en CSV, restablecer a ejemplo.
-  Sorting numérico real, rotación con alta rotación marcada y Pareto ABC con
-  % acumulado, línea 80% y clases A/B/C.
-- **Pronóstico:** serie ordenada sin duplicados ni espacios
-  (`25 Sep … Hoy … 25 Oct`), línea histórica espresso + pronóstico caramelo
-  punteado, tabla con `+X%` en salvia.
-- **UI nueva:** papel `#F7F3ED`, tinta espresso, acento caramelo. Sin azul
-  `#1F4E78`, sin mayúsculas gritadas, sin iconos unicode. Topbar fina,
-  nav en píldora, cards radio 14px sin sombra, tablas con hairline cálida,
-  botones 34px en sentence case.
+#
