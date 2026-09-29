@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import mock_data
+from app.data import analytics, mock_data
 from app.data import store
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -157,16 +157,15 @@ class InventoryScreen(QWidget):
         return card, value_widget
 
     def _refresh_summary_and_alert(self) -> None:
-        total = len(self.inventory)
-        en_riesgo = sum(1 for i in self.inventory if i["estado"] == "critico")
-        optimo = sum(1 for i in self.inventory if i["estado"] == "optimo")
-        self.lbl_total.setText(str(total))
-        self.lbl_optimo.setText(str(optimo))
-        self.lbl_riesgo.setText(str(en_riesgo))
-        if en_riesgo:
-            criticos = [i["nombre"] for i in self.inventory if i["estado"] == "critico"]
+        # cuentas desde la lista compartida, asi valen lo editado
+        health = analytics.inventory_health(self.inventory)
+        self.lbl_total.setText(str(health["total"]))
+        self.lbl_optimo.setText(str(health["optimo"]))
+        self.lbl_riesgo.setText(str(health["critico"]))
+        if health["critico"]:
+            criticos = health["criticos"]
             self.alert_label.setText(
-                f"{en_riesgo} por pedir: {', '.join(criticos[:4])}"
+                f"{health['critico']} por pedir: {', '.join(criticos[:4])}"
                 + ("…" if len(criticos) > 4 else "")
                 + " · Conviene pedir hoy."
             )
@@ -198,10 +197,14 @@ class InventoryScreen(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Guardar orden de compra", "orden_compra.csv", "CSV (*.csv)")
         if not path:
             return
+        # cantidad sugerida = llevar el stock al doble del minimo
         with open(path, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado"])
+            w = csv.DictWriter(f, fieldnames=["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado", "sugerido"])
             w.writeheader()
-            w.writerows(sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]))
+            for r in sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]):
+                fila = {k: r.get(k, "") for k in ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado"]}
+                fila["sugerido"] = analytics.reorder_qty(r)
+                w.writerow(fila)
 
     def _reset_data(self) -> None:
         self.inventory = store.reset_inventory()
@@ -317,15 +320,11 @@ class InventoryScreen(QWidget):
     def _pareto_chart_card(self) -> QFrame:
         card = self._chart_card("Qué deja más")
         canvas = MplCanvas(height=2.6)
-        data = sorted(mock_data.get_pareto_data(), key=lambda d: d["ingresos"], reverse=True)
+        # clases ABC calculadas, no a mano
+        data = analytics.abc_classes(mock_data.get_pareto_data())
         names = [d["nombre"] for d in data]
         values = [d["ingresos"] for d in data]
-        total = sum(values) or 1
-        cum_pct = []
-        acc = 0
-        for v in values:
-            acc += v
-            cum_pct.append(acc / total * 100)
+        cum_pct = [d["acum_pct"] for d in data]
         bars = canvas.axes.bar(names, values, color=styles.ESPRESSO, label="Ingresos")
         canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
         canvas.axes.tick_params(axis="x", labelsize=7, rotation=15)
@@ -335,9 +334,8 @@ class InventoryScreen(QWidget):
         ax2.set_ylim(0, 105)
         ax2.tick_params(labelsize=7, colors=styles.MUTED)
         # etiqueta clase A/B/C sobre cada barra
-        for i, (bar, pct) in enumerate(zip(bars, cum_pct)):
-            clase = "A" if pct <= 80 else ("B" if pct <= 95 else "C")
-            canvas.axes.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 80, clase,
+        for bar, d in zip(bars, data):
+            canvas.axes.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 80, d["clase"],
                              ha="center", fontsize=7, fontweight="bold", color=styles.MUTED)
         canvas.redraw()
         card.layout().addWidget(canvas)

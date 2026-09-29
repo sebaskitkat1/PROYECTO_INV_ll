@@ -1,4 +1,4 @@
-"""Pantalla principal: resumen del día, KPIs y gráficas generales."""
+"""Pantalla principal: resumen del dia, KPIs y graficas generales."""
 from __future__ import annotations
 
 import datetime
@@ -8,8 +8,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app import styles
-from app.data import mock_data
-from app.data.app_state import AppState
+from app.data import analytics, mock_data
+from app.data.store import get_inventory
 from app.widgets.kpi_card import KpiCard
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -22,7 +22,7 @@ MESES_ES = [
 
 
 class DashboardScreen(QWidget):
-    """Pantalla de inicio con el resumen del día y las gráficas clave."""
+    """Pantalla de inicio con el resumen del dia y las graficas clave."""
 
     def __init__(
         self,
@@ -61,17 +61,16 @@ class DashboardScreen(QWidget):
         content_layout.addLayout(self._build_charts_row())
         content_layout.addStretch()
 
-        footer = QLabel(f"{AppState.describe_source()} · cafedata")
-        footer.setProperty("role", "micro")
-        content_layout.addWidget(footer)
-
         scroll.setWidget(content)
         root.addWidget(scroll)
 
     # -- secciones -----------------------------------------------------
 
     def _build_kpi_row(self, on_navigate: Callable[[str], None]) -> QGridLayout:
-        kpis = self._get_kpis()
+        # todo sale de los dicts: serie de 7 dias, detalle y stock compartido
+        kpis = analytics.dashboard_kpis(
+            mock_data.get_sales_detail(), mock_data.get_sales_last_7_days(), get_inventory()
+        )
         grid = QGridLayout()
         grid.setSpacing(14)
 
@@ -100,34 +99,6 @@ class DashboardScreen(QWidget):
             grid.addWidget(card, 0, i)
         return grid
 
-    @staticmethod
-    def _get_kpis() -> dict:
-        """Devuelve KPIs desde AppState.df si hay CSV, si no usa mock."""
-        base = mock_data.get_kpis()
-        if not AppState.has_data():
-            return base
-        try:
-            df = AppState.df
-            # Busca una columna numérica de ventas: total/ingresos/ventas/monto/precio/importe
-            candidatos = ["total", "ingresos", "ventas", "monto", "precio", "importe", "amount"]
-            col = next((c for c in df.columns if str(c).lower() in candidatos), None)
-            if col is None:
-                # fallback: primera columna numérica
-                num_cols = df.select_dtypes(include="number").columns.tolist()
-                col = num_cols[0] if num_cols else None
-            if col is None:
-                base["productos_vendidos"] = {"valor": f"{len(df):,}", "delta": None, "positivo": True}
-                return base
-            total = float(df[col].sum())
-            n = len(df)
-            ticket = total / n if n else 0
-            base["ventas_hoy"] = {"valor": f"${total:,.0f}", "delta": "CSV", "positivo": True}
-            base["ticket_promedio"] = {"valor": f"${ticket:,.0f}", "delta": "CSV", "positivo": True}
-            base["productos_vendidos"] = {"valor": f"{n:,}", "delta": None, "positivo": True}
-        except Exception:
-            pass
-        return base
-
     def _build_charts_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(16)
@@ -136,7 +107,7 @@ class DashboardScreen(QWidget):
         return row
 
     def _sales_line_chart_card(self) -> QFrame:
-        card = self._chart_card("Ventas, últimos 7 días", "Tus tardes fuertes se ven aquí")
+        card = self._chart_card("Ventas, últimos 7 días")
         canvas = MplCanvas(height=2.6)
         data = mock_data.get_sales_last_7_days()
         days = [d["day"] for d in data]
@@ -152,9 +123,10 @@ class DashboardScreen(QWidget):
         return card
 
     def _top_products_bar_chart_card(self) -> QFrame:
-        card = self._chart_card("Lo más vendido", "Por ingresos, de menos a más")
+        card = self._chart_card("Lo más vendido")
         canvas = MplCanvas(height=2.6)
-        data = mock_data.get_top5_products()
+        # top real por ingresos, no lista fija
+        data = analytics.top_products(mock_data.get_sales_detail(), 5)
         products = [d["product"] for d in data][::-1]
         values = [d["ingresos"] for d in data][::-1]
         colors = [styles.LINE] * (len(values) - 1) + [styles.CARAMEL]

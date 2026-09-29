@@ -1,11 +1,11 @@
 """
-CaféData — sistema visual cálido y minimalista.
+CafeData — sistema visual calido y minimalista.
 
-Papel cálido, tinta espresso y un solo acento caramelo.
-Sin azules corporativos, sin sombras duras, sin mayúsculas gritadas.
+Papel calido, tinta espresso y un solo acento caramelo.
+Sin azules corporativos, sin sombras duras, sin mayusculas gritadas.
 """
 
-# --- Base cálida -------------------------------------------------------
+# --- base calida -------------------------------------------------------
 
 PAPER = "#F7F3ED"          # fondo app
 SURFACE = "#FFFFFF"        # tarjetas / inputs
@@ -30,7 +30,7 @@ CLAY_BG = "#F8E8E2"
 HONEY = "#8A6A1B"
 HONEY_BG = "#F7F0D9"
 
-# --- Aliases compat (el código viejo sigue funcionando, ahora cálido) ---
+# --- aliases compat (el codigo viejo sigue funcionando, ahora calido) ---
 
 PRIMARY = ESPRESSO
 PRIMARY_HOVER = ESPRESSO_HOVER
@@ -55,7 +55,7 @@ WARNING_BG = HONEY_BG
 
 FONT_FAMILY = "Segoe UI Variable, Segoe UI, Inter, system-ui, sans-serif"
 
-# Paleta para matplotlib (tierra, sin azul)
+# paleta para matplotlib (tierra, sin azul)
 CHART_COLORS = [ESPRESSO, CARAMEL, SAGE, "#7A6A5A", HONEY, CLAY]
 CHART_GRID = "#EFE7DA"
 
@@ -67,16 +67,19 @@ QWidget {{
     font-size: 13px;
 }}
 
+QLabel {{
+    background-color: transparent;
+}}
+
 QMainWindow {{
     background-color: {PAPER};
 }}
 
-/* Títulos: tinta, no azul, peso 600 */
+/* Titulos: tinta, no azul, peso 600 */
 QLabel[role="pageTitle"] {{
     font-size: 14px;
     font-weight: 600;
     color: {INK};
-    letter-spacing: 0px;
 }}
 QLabel[role="pageSubtitle"] {{
     font-size: 12px;
@@ -86,7 +89,6 @@ QLabel[role="sectionTitle"] {{
     font-size: 20px;
     font-weight: 600;
     color: {INK};
-    letter-spacing: -0.2px;
 }}
 QLabel[role="cardLabel"] {{
     font-size: 12px;
@@ -97,7 +99,6 @@ QLabel[role="cardValue"] {{
     font-size: 28px;
     font-weight: 600;
     color: {INK};
-    letter-spacing: -0.5px;
 }}
 QLabel[role="micro"] {{
     font-size: 11px;
@@ -116,9 +117,6 @@ QLineEdit {{
 QLineEdit:focus {{
     border: 1px solid {CARAMEL};
     background-color: {SURFACE};
-}}
-QLineEdit::placeholder {{
-    color: {FAINT};
 }}
 
 QComboBox {{
@@ -146,6 +144,8 @@ QComboBox QAbstractItemView {{
 
 /* Botones: 34px, sentence case, sin gritar */
 QPushButton {{
+    background-color: {SURFACE};
+    border: 1px solid {LINE};
     border-radius: 10px;
     font-size: 12.5px;
     font-weight: 600;
@@ -154,23 +154,23 @@ QPushButton {{
 }}
 QPushButton[role="primary"] {{
     background-color: {ESPRESSO};
-    color: #FFF8F0;
+    color: #fFF8F0;
     border: none;
 }}
 QPushButton[role="primary"]:hover {{
     background-color: {ESPRESSO_HOVER};
 }}
 QPushButton[role="primary"]:disabled {{
-    background-color: #C9BBAE;
-    color: #FFF8F0;
+    background-color: #c9BBAE;
+    color: #fFF8F0;
 }}
 QPushButton[role="secondary"] {{
-    background-color: #EFE7DA;
+    background-color: #eFE7DA;
     color: {INK};
     border: none;
 }}
 QPushButton[role="secondary"]:hover {{
-    background-color: #E6DAC7;
+    background-color: #e6DAC7;
 }}
 QPushButton[role="outline"] {{
     background-color: {SURFACE};
@@ -190,12 +190,12 @@ QPushButton[role="ghost"] {{
 }}
 QPushButton[role="ghost"]:hover {{
     color: {INK};
-    background-color: #EFE7DA;
+    background-color: #eFE7DA;
 }}
 
 /* Navegación segmentada */
 QFrame[role="segNav"] {{
-    background-color: #EFE7DA;
+    background-color: #eFE7DA;
     border: none;
     border-radius: 999px;
 }}
@@ -249,7 +249,7 @@ QFrame[role="infoBanner"] {{
 }}
 QFrame[role="alertDanger"] {{
     background-color: {CLAY_BG};
-    border: 1px solid #E5BEB2;
+    border: 1px solid #e5BEB2;
     border-radius: 12px;
 }}
 QFrame[role="topbar"] {{
@@ -302,7 +302,7 @@ QScrollBar:vertical {{
     width: 10px;
 }}
 QScrollBar::handle:vertical {{
-    background: #D8CBB9;
+    background: #d8CBB9;
     border-radius: 5px;
     min-height: 30px;
 }}

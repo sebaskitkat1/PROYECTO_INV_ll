@@ -21,7 +21,7 @@ class MplCanvas(FigureCanvasQTAgg):
         ax.spines["bottom"].set_color(styles.LINE)
         ax.spines["bottom"].set_linewidth(1)
         ax.tick_params(colors=styles.MUTED, labelsize=8, length=0, pad=6)
-        # Solo guía horizontal muy tenue
+        # solo guia horizontal muy tenue
         ax.grid(True, axis="y", linestyle="-", linewidth=0.7, color=styles.CHART_GRID, alpha=0.9)
         ax.set_axisbelow(True)
 

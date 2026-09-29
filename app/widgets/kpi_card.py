@@ -1,4 +1,4 @@
-"""Tarjeta KPI minimalista: valor tinta, delta en píldora suave."""
+"""Tarjeta KPI minimalista: valor tinta, delta en pildora suave."""
 from __future__ import annotations
 
 from typing import Callable, Optional
@@ -28,7 +28,7 @@ class KpiCard(QFrame):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(6)
 
-        # Etiqueta en minúsculas suaves, no gritada
+        # etiqueta en minusculas suaves, no gritada
         label_widget = QLabel(label.capitalize() if label.isupper() else label)
         label_widget.setProperty("role", "cardLabel")
         layout.addWidget(label_widget)
@@ -39,8 +39,6 @@ class KpiCard(QFrame):
 
         if delta:
             pill = QLabel(f"{'Sube' if delta_positive else 'Baja'} {delta} · ayer")
-            if delta in ("CSV",):
-                pill.setText("Datos cargados")
             bg = styles.SAGE_BG if delta_positive else styles.CLAY_BG
             fg = styles.SAGE if delta_positive else styles.CLAY
             pill.setStyleSheet(

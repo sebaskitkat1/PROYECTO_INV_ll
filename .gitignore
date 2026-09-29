@@ -4,3 +4,7 @@ __pycache__/
 .idea/
 .vscode/
 *.egg-info/
+*.csv
+*.db
+*.sqlite
+.env
