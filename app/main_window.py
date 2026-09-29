@@ -12,17 +12,10 @@ from app.screens.sales_screen import SalesScreen
 
 
 class MainWindow(QMainWindow):
-    """
-    Ventana principal de la aplicacion.
-
-    Usa un QStackedWidget para alternar entre pantallas, de forma
-    equivalente al estado `screen` que controlaba la navegacion en la
-    version web (src/App.tsx).
-    """
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("cafédata — tu café en números")
+        self.setWindowTitle("cafedata")
         self.resize(1200, 800)
         self.setMinimumSize(960, 640)
 
@@ -33,7 +26,8 @@ class MainWindow(QMainWindow):
         # reconstruyen al navegar, asi toman los datos nuevos
         # de la base sin reiniciar la app.
         self.screens: dict[str, object] = {}
-        self._REBUILD_ON_NAVIGATE = {"dashboard", "sales", "inventory", "prediction"}
+        # login tambien se reconstruye: asi vuelve limpio, sin texto anterior
+        self._REBUILD_ON_NAVIGATE = {"login", "dashboard", "sales", "inventory", "prediction"}
 
         self._build_login_screen()
         self.navigate("login")
@@ -78,6 +72,10 @@ class MainWindow(QMainWindow):
             "inventory": self._build_inventory_screen,
             "prediction": self._build_prediction_screen,
         }
+        if screen_name not in builders:
+            raise ValueError(f"pantalla desconocida: {screen_name}")
+        if screen_name != "login" and not AppState.user_email:
+            screen_name = "login"
         needs_build = screen_name not in self.screens or screen_name in self._REBUILD_ON_NAVIGATE
         if needs_build:
             builders[screen_name]()

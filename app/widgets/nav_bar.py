@@ -33,7 +33,7 @@ class NavBar(QFrame):
         outer.setContentsMargins(20, 0, 20, 0)
         outer.setSpacing(16)
 
-        # Marca pequeña + título
+        # marca pequena + titulo
         brand_col = QVBoxLayout()
         brand_col.setSpacing(0)
         brand_col.setContentsMargins(0, 0, 0, 0)
@@ -49,7 +49,7 @@ class NavBar(QFrame):
             back_btn.clicked.connect(on_back)
             brand_row.addWidget(back_btn)
 
-        mark = QLabel("cafédata.")
+        mark = QLabel("cafedata.")
         mark.setStyleSheet("font-size: 13px; font-weight: 700; color: #2A1E17; letter-spacing: -0.3px;")
         brand_row.addWidget(mark)
 
@@ -58,14 +58,15 @@ class NavBar(QFrame):
         brand_row.addWidget(title_label)
         brand_col.addLayout(brand_row)
 
-        subtitle_label = QLabel(subtitle)
-        subtitle_label.setProperty("role", "pageSubtitle")
-        brand_col.addWidget(subtitle_label)
+        if subtitle:
+            subtitle_label = QLabel(subtitle)
+            subtitle_label.setProperty("role", "pageSubtitle")
+            brand_col.addWidget(subtitle_label)
 
         outer.addLayout(brand_col)
         outer.addStretch()
 
-        # Nav segmentada en píldora
+        # nav segmentada en pildora
         seg = QFrame()
         seg.setProperty("role", "segNav")
         seg_layout = QHBoxLayout(seg)

@@ -1,13 +1,9 @@
 """
-Datos de ejemplo (mock data) usados mientras no se ha cargado un CSV real.
+Datos de ejemplo usados mientras se conecta la base.
 
-Esta estructura reproduce, con nombres de variables equivalentes, los
-datos de ejemplo del prototipo web original (src/data/mockData.ts) para
-que las pantallas y gráficas tengan el mismo aspecto desde el inicio.
-
-Cuando integres tus propias fuentes de datos (CSV, base de datos, API),
-lo más sencillo es reemplazar estas funciones por otras que devuelvan la
-misma forma de datos (listas de dicts / tuplas), sin tocar las pantallas.
+Reproduce los datos del prototipo web para que las pantallas
+se vean bien desde el inicio. Cuando este la base, cambia estas
+funciones por consultas que devuelvan lo mismo (listas de dicts).
 """
 
 from __future__ import annotations
@@ -22,16 +18,6 @@ def get_sales_last_7_days() -> list[dict]:
         {"day": "Vie", "ventas": 5640},
         {"day": "Sáb", "ventas": 6210},
         {"day": "Dom", "ventas": 4380},
-    ]
-
-
-def get_top5_products() -> list[dict]:
-    return [
-        {"product": "Café Americano", "ingresos": 8420},
-        {"product": "Capuchino", "ingresos": 7350},
-        {"product": "Torta de Chocolate", "ingresos": 5180},
-        {"product": "Sandwich Club", "ingresos": 4920},
-        {"product": "Agua Mineral", "ingresos": 3670},
     ]
 
 
@@ -86,8 +72,8 @@ def get_pareto_data() -> list[dict]:
 
 
 def get_prediction_data() -> list[dict]:
-    # Serie ordenada cronológicamente: 6 días históricos + Hoy (pivote)
-    # + 6 días de pronóstico. Sin espacios/duplicados en etiquetas.
+    # serie ordenada cronologicamente: 6 dias historicos + Hoy (pivote)
+    # + 6 dias de pronostico. Sin espacios/duplicados en etiquetas.
     return [
         {"dia": "25 Sep", "historico": 4600, "prediccion": None},
         {"dia": "27 Sep", "historico": 4200, "prediccion": None},
@@ -103,23 +89,3 @@ def get_prediction_data() -> list[dict]:
         {"dia": "18 Oct", "historico": None, "prediccion": 6580},
         {"dia": "25 Oct", "historico": None, "prediccion": 6210},
     ]
-
-
-def get_top_predicted() -> list[dict]:
-    return [
-        {"nombre": "Café Americano", "actual": 8420, "predicho": 9650, "crecimiento": 14.6},
-        {"nombre": "Capuchino", "actual": 7350, "predicho": 8120, "crecimiento": 10.5},
-        {"nombre": "Torta de Chocolate", "actual": 5180, "predicho": 5480, "crecimiento": 5.8},
-        {"nombre": "Sandwich Club", "actual": 4920, "predicho": 5340, "crecimiento": 8.5},
-        {"nombre": "Jugo Natural", "actual": 3270, "predicho": 3920, "crecimiento": 19.9},
-    ]
-
-
-def get_kpis() -> dict:
-    """KPIs mostrados en la tarjeta resumen del dashboard."""
-    return {
-        "ventas_hoy": {"valor": "$5,640", "delta": "8%", "positivo": True},
-        "ticket_promedio": {"valor": "$187", "delta": "3%", "positivo": True},
-        "productos_vendidos": {"valor": "302", "delta": "5%", "positivo": True},
-        "stock_en_riesgo": {"valor": "4", "delta": None, "positivo": None},
-    }
