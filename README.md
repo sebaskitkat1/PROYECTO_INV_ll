@@ -9,7 +9,6 @@ no hay cifras escritas a mano en las pantallas.
 Requiere Python 3.10+.
 
 ```powershell
-cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
@@ -18,7 +17,6 @@ pip install -r requirements.txt
 ## Ejecución
 
 ```powershell
-cd "C:\Users\fcoan\Downloads\CafeData-Desktop\CafeData-Desktop"
 python main.py
 ```
 
