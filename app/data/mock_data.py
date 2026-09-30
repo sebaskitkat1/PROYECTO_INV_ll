@@ -38,16 +38,16 @@ def get_sales_detail() -> list[dict]:
 
 def get_inventory() -> list[dict]:
     return [
-        {"nombre": "Café en Grano (kg)", "stockActual": 12, "stockMinimo": 8, "diasAgotar": 18, "estado": "optimo"},
-        {"nombre": "Leche (L)", "stockActual": 45, "stockMinimo": 30, "diasAgotar": 9, "estado": "optimo"},
-        {"nombre": "Harina (kg)", "stockActual": 7, "stockMinimo": 10, "diasAgotar": 3, "estado": "critico"},
-        {"nombre": "Azúcar (kg)", "stockActual": 18, "stockMinimo": 15, "diasAgotar": 12, "estado": "optimo"},
-        {"nombre": "Chocolate (kg)", "stockActual": 3, "stockMinimo": 5, "diasAgotar": 4, "estado": "critico"},
-        {"nombre": "Jamón (kg)", "stockActual": 4, "stockMinimo": 6, "diasAgotar": 2, "estado": "critico"},
-        {"nombre": "Queso (kg)", "stockActual": 9, "stockMinimo": 8, "diasAgotar": 7, "estado": "advertencia"},
-        {"nombre": "Pan de Caja (pzas)", "stockActual": 48, "stockMinimo": 24, "diasAgotar": 8, "estado": "optimo"},
-        {"nombre": "Fruta (kg)", "stockActual": 6, "stockMinimo": 10, "diasAgotar": 3, "estado": "critico"},
-        {"nombre": "Agua (bidones)", "stockActual": 22, "stockMinimo": 20, "diasAgotar": 11, "estado": "advertencia"},
+        {"nombre": "Café en Grano (kg)", "unidad": "kg", "stockActual": 12, "stockMinimo": 8, "diasAgotar": 18, "estado": "optimo"},
+        {"nombre": "Leche (L)", "unidad": "L", "stockActual": 45, "stockMinimo": 30, "diasAgotar": 9, "estado": "optimo"},
+        {"nombre": "Harina (kg)", "unidad": "kg", "stockActual": 7, "stockMinimo": 10, "diasAgotar": 3, "estado": "critico"},
+        {"nombre": "Azúcar (kg)", "unidad": "kg", "stockActual": 18, "stockMinimo": 15, "diasAgotar": 12, "estado": "advertencia"},
+        {"nombre": "Chocolate (kg)", "unidad": "kg", "stockActual": 3, "stockMinimo": 5, "diasAgotar": 4, "estado": "critico"},
+        {"nombre": "Jamón (kg)", "unidad": "kg", "stockActual": 4, "stockMinimo": 6, "diasAgotar": 2, "estado": "critico"},
+        {"nombre": "Queso (kg)", "unidad": "kg", "stockActual": 9, "stockMinimo": 8, "diasAgotar": 7, "estado": "advertencia"},
+        {"nombre": "Pan de Caja (pzas)", "unidad": "pzas", "stockActual": 48, "stockMinimo": 24, "diasAgotar": 8, "estado": "optimo"},
+        {"nombre": "Fruta (kg)", "unidad": "kg", "stockActual": 6, "stockMinimo": 10, "diasAgotar": 3, "estado": "critico"},
+        {"nombre": "Agua (bidones)", "unidad": "bidones", "stockActual": 22, "stockMinimo": 20, "diasAgotar": 11, "estado": "advertencia"},
     ]
 
 

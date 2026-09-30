@@ -6,14 +6,18 @@ from typing import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
+    QSpinBox,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -30,9 +34,10 @@ ESTADO_CONFIG = {
     "optimo": (styles.SUCCESS_BG, styles.SUCCESS, "ÓPTIMO"),
     "advertencia": (styles.WARNING_BG, styles.WARNING, "ADVERTENCIA"),
     "critico": (styles.DANGER_BG, styles.DANGER, "CRÍTICO"),
+    "sin_minimo": (styles.BG_LIGHT, styles.MUTED, "SIN MÍNIMO"),
 }
 
-ESTADO_ORDEN = {"critico": 0, "advertencia": 1, "optimo": 2}
+ESTADO_ORDEN = {"critico": 0, "advertencia": 1, "optimo": 2, "sin_minimo": 3}
 
 
 class NumericItem(QTableWidgetItem):
@@ -55,14 +60,22 @@ class EstadoItem(QTableWidgetItem):
             return super().__lt__(other)
 
 
-def calc_estado(stock_actual: int, stock_minimo: int) -> str:
-    if stock_minimo <= 0:
-        return "optimo"
-    if stock_actual < stock_minimo:
-        return "critico"
-    if stock_actual < stock_minimo * 1.25:
-        return "advertencia"
-    return "optimo"
+class StockDelegate(QStyledItemDelegate):
+    """editor numerico segun unidad: decimales en kg/L, enteros en pzas/bidones."""
+
+    def __init__(self, buscar_unidad, parent=None):
+        super().__init__(parent)
+        self._buscar_unidad = buscar_unidad
+
+    def createEditor(self, parent, option, index):
+        if self._buscar_unidad(index.row()) in analytics.ENTERO_UNIDADES:
+            editor = QSpinBox(parent)
+            editor.setRange(0, 99999)
+        else:
+            editor = QDoubleSpinBox(parent)
+            editor.setRange(0.0, 99999.0)
+            editor.setDecimals(2)
+        return editor
 
 
 class InventoryScreen(QWidget):
@@ -224,24 +237,38 @@ class InventoryScreen(QWidget):
         table.setSortingEnabled(True)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self._reload_table(table)
+        table.setItemDelegateForColumn(1, StockDelegate(self._unidad_fila, table))
+        table.setItemDelegateForColumn(2, StockDelegate(self._unidad_fila, table))
         table.cellChanged.connect(self._on_cell_changed)
+        table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
         return table
 
+    def _on_sort_changed(self, col: int, order) -> None:
+        # recuerda el orden del usuario para mantenerlo al recargar
+        self._user_sort = (col, order)
+
     def _reload_table(self, table: QTableWidget | None = None) -> None:
-        tbl = table or self.table
+        tbl = table if table is not None else self.table
         tbl.blockSignals(True)
+        tbl.setSortingEnabled(False)
         rows = sorted(self.inventory, key=lambda r: ESTADO_ORDEN[r["estado"]])
         tbl.setRowCount(len(rows))
         for r, row in enumerate(rows):
             name_item = QTableWidgetItem(row["nombre"])
             name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
             tbl.setItem(r, 0, name_item)
-            tbl.setItem(r, 1, self._numeric_item(row["stockActual"]))
-            tbl.setItem(r, 2, self._numeric_item(row["stockMinimo"]))
+            tbl.setItem(r, 1, self._stock_item(row["stockActual"], row.get("unidad")))
+            tbl.setItem(r, 2, self._stock_item(row["stockMinimo"], row.get("unidad")))
 
-            dias_item = self._numeric_item(row["diasAgotar"], suffix=" días")
+            dias = row.get("diasAgotar")
+            if dias is None:
+                dias_item = NumericItem("—")
+                dias_item.setData(Qt.UserRole, float("inf"))
+            else:
+                dias_item = self._numeric_item(self._fmt_dias(float(dias), row.get("unidad")))
+                dias_item.setData(Qt.UserRole, float(dias))
             dias_item.setFlags(dias_item.flags() & ~Qt.ItemIsEditable)
-            if row["diasAgotar"] <= 5:
+            if dias is not None and dias <= 5:
                 dias_item.setForeground(QColor(styles.DANGER))
                 font = dias_item.font()
                 font.setBold(True)
@@ -263,6 +290,11 @@ class InventoryScreen(QWidget):
         tbl.setMinimumHeight(min(40 * len(rows) + 40, 420) if rows else 120)
         tbl.resizeColumnsToContents()
         tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        tbl.setSortingEnabled(True)
+        # respeta el orden que eligio el usuario; si no, queda el de estado
+        user_sort = getattr(self, "_user_sort", None)
+        if user_sort is not None:
+            tbl.sortItems(user_sort[0], user_sort[1])
         tbl.blockSignals(False)
 
     def _on_cell_changed(self, row: int, col: int) -> None:
@@ -270,23 +302,56 @@ class InventoryScreen(QWidget):
         if col not in (1, 2):
             return
         name = self.table.item(row, 0).text()
-        try:
-            new_val = int(self.table.item(row, col).text().strip().split()[0])
-            if new_val < 0:
-                raise ValueError
-        except Exception:
-            self._reload_table()  # revierte texto invalido
+        inv = next((i for i in self.inventory if i["nombre"] == name), None)
+        if inv is None:
+            self._reload_table()
             return
-        for inv in self.inventory:
-            if inv["nombre"] == name:
-                if col == 1:
-                    inv["stockActual"] = new_val
-                else:
-                    inv["stockMinimo"] = new_val
-                inv["estado"] = calc_estado(inv["stockActual"], inv["stockMinimo"])
-                break
+        try:
+            nuevo = float(self.table.item(row, col).text().strip().split()[0].replace(",", "."))
+        except (ValueError, AttributeError, IndexError):
+            QMessageBox.warning(self, "Valor invalido", f"{name}: escribe un numero.")
+            self._reload_table()
+            return
+        entero = inv.get("unidad") in analytics.ENTERO_UNIDADES
+        if nuevo < 0 or (entero and not nuevo.is_integer()):
+            QMessageBox.warning(self, "Valor invalido", f"{name}: cantidad no valida para {inv.get('unidad')}.")
+            self._reload_table()
+            return
+        nuevo = int(nuevo) if entero else round(nuevo, 2)
+        if col == 1:
+            inv["stockActual"] = nuevo
+        else:
+            inv["stockMinimo"] = nuevo
+        estado, dias = analytics.stock_status(inv["stockActual"], inv["stockMinimo"], inv.get("consumoDiario"))
+        inv["estado"], inv["diasAgotar"] = estado, dias
         self._reload_table()
         self._refresh_summary_and_alert()
+
+    def _unidad_fila(self, fila: int) -> str:
+        item = self.table.item(fila, 0)
+        if item is None:
+            return "kg"
+        inv = next((i for i in self.inventory if i["nombre"] == item.text()), None)
+        return (inv or {}).get("unidad", "kg")
+
+    @staticmethod
+    def _fmt_stock(value: float, unidad) -> str:
+        if unidad in analytics.ENTERO_UNIDADES:
+            return f"{int(value):,}"
+        return f"{float(value):.2f}".rstrip("0").rstrip(".")
+
+    @classmethod
+    def _stock_item(cls, value: float, unidad) -> NumericItem:
+        item = NumericItem(cls._fmt_stock(value, unidad))
+        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        item.setData(Qt.UserRole, float(value))
+        return item
+
+    @staticmethod
+    def _fmt_dias(dias: float, unidad) -> str:
+        if unidad in analytics.ENTERO_UNIDADES:
+            return f"{int(round(dias))} días"
+        return f"{dias:.1f}".rstrip("0").rstrip(".") + " días"
 
     @staticmethod
     def _numeric_item(value, suffix: str = "") -> NumericItem:
@@ -305,13 +370,17 @@ class InventoryScreen(QWidget):
         return row
 
     def _rotation_chart_card(self) -> QFrame:
-        card = self._chart_card("Rotación")
+        card = self._chart_card("Cobertura (días)")
         canvas = MplCanvas(height=2.6)
-        data = mock_data.get_rotation_data()
-        names = [d["nombre"] for d in data][::-1]
-        values = [d["dias"] for d in data][::-1]
-        colors = [styles.CLAY if v <= 1.5 else styles.CARAMEL_SOFT for v in values]
+        # misma fuente que la tabla: stock / consumo; color segun estado
+        items = [i for i in self.inventory if i.get("diasAgotar") is not None]
+        items.sort(key=lambda i: float(i["diasAgotar"]))
+        names = [i["nombre"].split("(")[0].strip() for i in items][::-1]
+        values = [float(i["diasAgotar"]) for i in items][::-1]
+        color_por_estado = {"critico": styles.CLAY, "advertencia": styles.CARAMEL}
+        colors = [color_por_estado.get(i["estado"], styles.CARAMEL_SOFT) for i in items][::-1]
         canvas.axes.barh(names, values, color=colors, height=0.55)
+        canvas.axes.set_xlabel("días", fontsize=9, color=styles.MUTED)
         canvas.axes.tick_params(axis="y", labelsize=8)
         canvas.redraw()
         card.layout().addWidget(canvas)
