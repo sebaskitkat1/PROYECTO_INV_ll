@@ -10,7 +10,8 @@ from PySide6.QtWidgets import QApplication
 from app.data import store
 from app.screens.inventory_screen import InventoryScreen
 
-ESTADO_TXT = {"optimo": "ÓPTIMO", "advertencia": "ADVERTENCIA", "critico": "CRÍTICO"}
+ESTADO_TXT = {"optimo": "ÓPTIMO", "advertencia": "ADVERTENCIA", "critico": "CRÍTICO",
+              "sin_minimo": "SIN MÍNIMO"}
 
 
 def _falla_filas(screen):
@@ -23,8 +24,9 @@ def _falla_filas(screen):
             continue
         nombre = celdas[0].text()
         base = next(i for i in inv if i["nombre"] == nombre)
-        ok = (celdas[1].text(), celdas[2].text(), celdas[3].text()) == (
-            str(base["stockActual"]), str(base["stockMinimo"]), ESTADO_TXT[base["estado"]])
+        ok = (float(celdas[1].text().replace(",", ".")) == float(base["stockActual"])
+              and float(celdas[2].text().replace(",", ".")) == float(base["stockMinimo"])
+              and celdas[3].text() == ESTADO_TXT[base["estado"]])
         if not ok:
             malas.append((r, nombre))
     return malas
@@ -53,7 +55,9 @@ class TestInventarioTabla(unittest.TestCase):
     def test_edicion_y_restablecer_consistentes(self):
         fila = next(r for r in range(self.s.table.rowCount())
                     if self.s.table.item(r, 0).text() == "Harina (kg)")
+        self.s.table.blockSignals(True)
         self.s.table.item(fila, 1).setText("20")
+        self.s.table.blockSignals(False)
         self.s._on_cell_changed(fila, 1)
         self.assertEqual(_falla_filas(self.s), [])
         self.assertEqual(

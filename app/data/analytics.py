@@ -78,6 +78,29 @@ def dashboard_kpis(detail: list[dict], last_7: list[dict], inventory: list[dict]
 
 
 # -- inventario ----------------------------------------------------------
+# una sola funcion pura: estado y dias salen de stock, minimo y consumo.
+# no se guardan los derivados. Reglas: stock 0 siempre critico con 0 dias;
+# minimo 0 es neutro (sin minimo, fuera de alertas pero visible);
+# consumo desconocido o 0 deja dias en None ("—" en la tabla).
+
+SIN_MINIMO = "sin_minimo"
+
+ENTERO_UNIDADES = {"pzas", "bidones"}
+
+
+def stock_status(stock: float, minimo: float, consumo: float | None) -> tuple[str, float | None]:
+    stock = float(stock or 0)
+    minimo = float(minimo or 0)
+    if stock <= 0:
+        return ("critico", 0.0)
+    dias = stock / consumo if consumo and consumo > 0 else None
+    if minimo <= 0:
+        return (SIN_MINIMO, dias)
+    if stock < minimo:
+        return ("critico", dias)
+    if stock < minimo * 1.25:
+        return ("advertencia", dias)
+    return ("optimo", dias)
 
 def inventory_health(items: list[dict]) -> dict:
     total = len(items)
