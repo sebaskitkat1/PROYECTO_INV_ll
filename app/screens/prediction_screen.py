@@ -1,6 +1,7 @@
 """Pantalla de prediccion de demanda a 30 dias."""
 from __future__ import annotations
 
+import datetime
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -75,22 +76,18 @@ class PredictionScreen(QWidget):
         layout.addWidget(title)
 
         canvas = MplCanvas(height=3.2)
-        # historico del mock, futuro calculado con promedio + tendencia
-        base = mock_data.get_prediction_data()
-        dias = [d["dia"] for d in base]
-        historico = [d["historico"] for d in base]
-        hist_vals = [float(v) for v in historico if v is not None]
-        fut_labels = [d["dia"] for d in base if d["historico"] is None]
-        fut_vals = analytics.forecast_values(hist_vals, len(fut_labels))
-        prediccion: list[float | None] = []
-        it = iter(fut_vals)
-        for d in base:
-            if d["historico"] is None:
-                prediccion.append(next(it))
-            elif d["dia"] == "Hoy":
-                prediccion.append(d["historico"])
-            else:
-                prediccion.append(None)
+        # historico del mock con fecha real, futuro diario calculado
+        hoy = datetime.date.today()
+        hist = []
+        for d in mock_data.get_prediction_data():
+            f = analytics.parse_dia(d["dia"], hoy)
+            if f is not None and d["historico"] is not None:
+                hist.append((f, float(d["historico"])))
+        hist.sort()
+        futuro = analytics.forecast_daily(hist, 30)
+        dias = [d for d, _ in hist] + [d for d, _ in futuro]
+        historico = [v for _, v in hist] + [None] * len(futuro)
+        prediccion = [None] * (len(hist) - 1) + [hist[-1][1]] + [v for _, v in futuro] if hist else [None] * len(dias)
 
         x = list(range(len(dias)))
         canvas.axes.plot(
@@ -100,8 +97,10 @@ class PredictionScreen(QWidget):
             x, prediccion, color=styles.CARAMEL, linewidth=2, linestyle="--",
             marker="o", markersize=4, label="Pronóstico",
         )
-        canvas.axes.set_xticks(x)
-        canvas.axes.set_xticklabels(dias, rotation=40, fontsize=7, ha="right")
+        etiquetas = [analytics.etiqueta_corta(d) for d in dias]
+        paso = 5
+        canvas.axes.set_xticks(x[::paso])
+        canvas.axes.set_xticklabels(etiquetas[::paso], rotation=30, fontsize=7, ha="right")
         canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
         canvas.axes.legend(fontsize=8, frameon=False, loc="upper left")
         canvas.redraw()
@@ -117,20 +116,30 @@ class PredictionScreen(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # backtest: si el modelo no gana a lo simple, se avisa preliminar
+        hoy = datetime.date.today()
+        hist = []
+        for d in mock_data.get_prediction_data():
+            f = analytics.parse_dia(d["dia"], hoy)
+            if f is not None and d["historico"] is not None:
+                hist.append((f, float(d["historico"])))
+        hist.sort()
+        futuro = analytics.forecast_daily(hist, 30)
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        total_30 = sum(v for _, v in futuro)
+
         header = QFrame()
         header.setStyleSheet(f"background-color: {styles.SURFACE_WARM}; border-bottom: 1px solid {styles.LINE};")
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(18, 14, 18, 14)
-        title = QLabel("Qué esperar el próximo mes")
+        title = QLabel("Estimación preliminar" if not bt["gana"] else "Qué esperar el próximo mes")
         title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
         header_layout.addWidget(title)
         layout.addWidget(header)
 
         columns = ["Producto", "Ventas Actuales", "Ventas Predichas", "Crecimiento Esperado"]
-        # crecimiento repartido desde la tendencia global y el margen
-        hist = [float(d["historico"]) for d in mock_data.get_prediction_data() if d["historico"] is not None]
-        g30 = analytics.overall_growth(hist, 6)
-        rows = analytics.product_forecast(mock_data.get_sales_detail(), g30, 5)
+        # reparto por participacion: la suma cuadra con el total pronosticado
+        rows = analytics.product_forecast_share(mock_data.get_sales_detail(), total_30, 5)
 
         table = QTableWidget(len(rows), len(columns))
         table.setHorizontalHeaderLabels(columns)
@@ -151,8 +160,9 @@ class PredictionScreen(QWidget):
             predicho_item.setFont(font)
             table.setItem(r, 2, predicho_item)
 
-            crecimiento_item = self._right_aligned(f"+{row['crecimiento']}%")
-            crecimiento_item.setForeground(QColor(styles.SAGE))
+            crecimiento_txt, crecimiento_color = self._crec_texto_color(row["crecimiento"])
+            crecimiento_item = self._right_aligned(crecimiento_txt)
+            crecimiento_item.setForeground(QColor(crecimiento_color))
             font = crecimiento_item.font()
             font.setBold(True)
             crecimiento_item.setFont(font)
@@ -164,6 +174,11 @@ class PredictionScreen(QWidget):
         layout.addWidget(table)
 
         return card
+
+    @staticmethod
+    def _crec_texto_color(crec: float) -> tuple[str, str]:
+        # signo siempre visible, color segun el signo (F02)
+        return (f"{crec:+.1f}%", styles.SAGE if crec >= 0 else styles.CLAY)
 
     @staticmethod
     def _right_aligned(text: str) -> QTableWidgetItem:
