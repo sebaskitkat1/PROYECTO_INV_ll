@@ -225,11 +225,17 @@ class InventoryScreen(QWidget):
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self._reload_table(table)
         table.cellChanged.connect(self._on_cell_changed)
+        table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
         return table
 
+    def _on_sort_changed(self, col: int, order) -> None:
+        # recuerda el orden del usuario para mantenerlo al recargar
+        self._user_sort = (col, order)
+
     def _reload_table(self, table: QTableWidget | None = None) -> None:
-        tbl = table or self.table
+        tbl = table if table is not None else self.table
         tbl.blockSignals(True)
+        tbl.setSortingEnabled(False)
         rows = sorted(self.inventory, key=lambda r: ESTADO_ORDEN[r["estado"]])
         tbl.setRowCount(len(rows))
         for r, row in enumerate(rows):
@@ -263,6 +269,11 @@ class InventoryScreen(QWidget):
         tbl.setMinimumHeight(min(40 * len(rows) + 40, 420) if rows else 120)
         tbl.resizeColumnsToContents()
         tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        tbl.setSortingEnabled(True)
+        # respeta el orden que eligio el usuario; si no, queda el de estado
+        user_sort = getattr(self, "_user_sort", None)
+        if user_sort is not None:
+            tbl.sortItems(user_sort[0], user_sort[1])
         tbl.blockSignals(False)
 
     def _on_cell_changed(self, row: int, col: int) -> None:
