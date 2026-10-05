@@ -71,8 +71,8 @@ class TestReparto(unittest.TestCase):
         self.assertTrue(all(r["predicho"] >= 0 for r in todos))
         top5 = analytics.product_forecast_share(det, 45000.0, 5)
         self.assertEqual([r["nombre"] for r in top5],
-                         ["Café Americano", "Capuchino", "Torta de Chocolate",
-                          "Sandwich Club", "Agua Mineral"])
+                         ["Mango", "Manzana Roja", "Uva",
+                          "Naranja", "Fresa"])
 
     def test_tendencia_negativa_da_negativos(self):
         from app.data import mock_data

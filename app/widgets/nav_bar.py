@@ -49,7 +49,7 @@ class NavBar(QFrame):
             back_btn.clicked.connect(on_back)
             brand_row.addWidget(back_btn)
 
-        mark = QLabel("cafedata.")
+        mark = QLabel("frutidata.")
         mark.setStyleSheet("font-size: 13px; font-weight: 700; color: #2A1E17; letter-spacing: -0.3px;")
         brand_row.addWidget(mark)
 

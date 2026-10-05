@@ -1,5 +1,5 @@
 """
-CafeData — sistema visual calido y minimalista.
+FrutiData — sistema visual calido y minimalista.
 
 Papel calido, tinta espresso y un solo acento caramelo.
 Sin azules corporativos, sin sombras duras, sin mayusculas gritadas.

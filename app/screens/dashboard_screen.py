@@ -81,7 +81,7 @@ class DashboardScreen(QWidget):
                 on_click=lambda: on_navigate("sales"),
             ),
             KpiCard(
-                "Ticket promedio", kpis["ticket_promedio"]["valor"], kpis["ticket_promedio"]["delta"],
+                "Precio por unidad", kpis["ticket_promedio"]["valor"], kpis["ticket_promedio"]["delta"],
                 kpis["ticket_promedio"]["positivo"], accent=styles.INK,
                 on_click=lambda: on_navigate("sales"),
             ),

@@ -26,20 +26,20 @@ from app.data import analytics, mock_data
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
 
-CATEGORIAS = ["Todos", "Bebidas", "Alimentos", "Postres"]
+CATEGORIAS = ["Todos", "Frutas", "Verduras", "Jugos"]
 
 # mapeo categoria para datos de ejemplo (mock no trae categoria).
 CATEGORY_MAP = {
-    "Café Americano": "Bebidas",
-    "Capuchino": "Bebidas",
-    "Torta de Chocolate": "Postres",
-    "Sandwich Club": "Alimentos",
-    "Agua Mineral": "Bebidas",
-    "Jugo Natural": "Bebidas",
-    "Croissant": "Alimentos",
-    "Té Negro": "Bebidas",
-    "Pan Dulce": "Alimentos",
-    "Frappé": "Bebidas",
+    "Mango": "Frutas",
+    "Manzana Roja": "Frutas",
+    "Uva": "Frutas",
+    "Naranja": "Frutas",
+    "Fresa": "Frutas",
+    "Plátano": "Frutas",
+    "Jitomate": "Verduras",
+    "Jugo de Naranja": "Jugos",
+    "Sandía": "Frutas",
+    "Piña": "Frutas",
 }
 
 
@@ -146,7 +146,7 @@ class SalesScreen(QWidget):
         rows = []
         for r in mock_data.get_sales_detail():
             d = dict(r)
-            d["categoria"] = CATEGORY_MAP.get(r["nombre"], "Bebidas")
+            d["categoria"] = CATEGORY_MAP.get(r["nombre"], "Frutas")
             rows.append(d)
         return rows
 
@@ -155,7 +155,7 @@ class SalesScreen(QWidget):
         q = self.search_input.text().strip().lower() if hasattr(self, "search_input") else ""
         out = []
         for r in rows:
-            if cat != "Todos" and r.get("categoria", "Bebidas") != cat:
+            if cat != "Todos" and r.get("categoria", "Frutas") != cat:
                 continue
             if q and q not in r["nombre"].lower():
                 continue
