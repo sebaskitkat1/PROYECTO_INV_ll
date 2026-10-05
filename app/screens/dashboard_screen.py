@@ -81,7 +81,7 @@ class DashboardScreen(QWidget):
                 on_click=lambda: on_navigate("sales"),
             ),
             KpiCard(
-                "Ticket promedio", kpis["ticket_promedio"]["valor"], kpis["ticket_promedio"]["delta"],
+                "Precio por unidad", kpis["ticket_promedio"]["valor"], kpis["ticket_promedio"]["delta"],
                 kpis["ticket_promedio"]["positivo"], accent=styles.INK,
                 on_click=lambda: on_navigate("sales"),
             ),
@@ -113,8 +113,8 @@ class DashboardScreen(QWidget):
         days = [d["day"] for d in data]
         values = [d["ventas"] for d in data]
 
-        canvas.axes.plot(days, values, color=styles.ESPRESSO, linewidth=2.2, marker="o", markersize=4,
-                         markerfacecolor=styles.CARAMEL, markeredgecolor=styles.ESPRESSO)
+        canvas.axes.plot(days, values, color=styles.VERDE, linewidth=2.2, marker="o", markersize=4,
+                         markerfacecolor=styles.MENTA, markeredgecolor=styles.VERDE)
         canvas.axes.set_ylabel("")
         canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
         canvas.redraw()
@@ -129,7 +129,7 @@ class DashboardScreen(QWidget):
         data = analytics.top_products(mock_data.get_sales_detail(), 5)
         products = [d["product"] for d in data][::-1]
         values = [d["ingresos"] for d in data][::-1]
-        colors = [styles.LINE] * (len(values) - 1) + [styles.CARAMEL]
+        colors = [styles.LINE] * (len(values) - 1) + [styles.MENTA]
 
         canvas.axes.barh(products, values, color=colors, height=0.55)
         canvas.axes.xaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")

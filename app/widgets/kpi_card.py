@@ -52,7 +52,7 @@ class KpiCard(QFrame):
             self.setCursor(Qt.PointingHandCursor)
             self._on_click = on_click
             self.setStyleSheet(
-                "QFrame[role='card']:hover { border: 1px solid #D9C6AC; }"
+                "QFrame[role='card']:hover { border: 1px solid #A9C7A2; }"
             )
         else:
             self._on_click = None

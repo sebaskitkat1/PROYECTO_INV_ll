@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CafeData — Sistema de Analisis de Datos (version de escritorio)
+Cosecha — Sistema de Analisis de Datos (version de escritorio)
 
 Punto de entrada de la aplicacion. Ejecutar con:
 
@@ -19,7 +19,7 @@ from app.styles import GLOBAL_STYLESHEET
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyleSheet(GLOBAL_STYLESHEET)
-    app.setApplicationName("CafeData")
+    app.setApplicationName("Cosecha")
 
     window = MainWindow()
     window.show()

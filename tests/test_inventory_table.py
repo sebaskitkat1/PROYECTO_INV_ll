@@ -54,18 +54,18 @@ class TestInventarioTabla(unittest.TestCase):
 
     def test_edicion_y_restablecer_consistentes(self):
         fila = next(r for r in range(self.s.table.rowCount())
-                    if self.s.table.item(r, 0).text() == "Harina (kg)")
+                    if self.s.table.item(r, 0).text() == "Naranja (kg)")
         self.s.table.blockSignals(True)
-        self.s.table.item(fila, 1).setText("20")
+        self.s.table.item(fila, 1).setText("30")
         self.s.table.blockSignals(False)
         self.s._on_cell_changed(fila, 1)
         self.assertEqual(_falla_filas(self.s), [])
         self.assertEqual(
-            next(i for i in store.get_inventory() if i["nombre"] == "Harina (kg)")["stockActual"], 20)
+            next(i for i in store.get_inventory() if i["nombre"] == "Naranja (kg)")["stockActual"], 30)
         self.s._reset_data()
         self.assertEqual(_falla_filas(self.s), [])
         self.assertEqual(
-            next(i for i in store.get_inventory() if i["nombre"] == "Harina (kg)")["stockActual"], 7)
+            next(i for i in store.get_inventory() if i["nombre"] == "Naranja (kg)")["stockActual"], 18)
 
 
 if __name__ == "__main__":

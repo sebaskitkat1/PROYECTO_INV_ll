@@ -91,10 +91,10 @@ class PredictionScreen(QWidget):
 
         x = list(range(len(dias)))
         canvas.axes.plot(
-            x, historico, color=styles.ESPRESSO, linewidth=2.2, marker="o", markersize=4, label="Histórico"
+            x, historico, color=styles.VERDE, linewidth=2.2, marker="o", markersize=4, label="Histórico"
         )
         canvas.axes.plot(
-            x, prediccion, color=styles.CARAMEL, linewidth=2, linestyle="--",
+            x, prediccion, color=styles.MENTA, linewidth=2, linestyle="--",
             marker="o", markersize=4, label="Pronóstico",
         )
         etiquetas = [analytics.etiqueta_corta(d) for d in dias]
@@ -154,7 +154,7 @@ class PredictionScreen(QWidget):
             table.setItem(r, 1, self._right_aligned(f"${row['actual']:,}"))
 
             predicho_item = self._right_aligned(f"${row['predicho']:,}")
-            predicho_item.setForeground(QColor(styles.ESPRESSO))
+            predicho_item.setForeground(QColor(styles.VERDE))
             font = predicho_item.font()
             font.setBold(True)
             predicho_item.setFont(font)
