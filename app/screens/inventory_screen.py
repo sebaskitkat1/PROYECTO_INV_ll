@@ -377,8 +377,8 @@ class InventoryScreen(QWidget):
         items.sort(key=lambda i: float(i["diasAgotar"]))
         names = [i["nombre"].split("(")[0].strip() for i in items][::-1]
         values = [float(i["diasAgotar"]) for i in items][::-1]
-        color_por_estado = {"critico": styles.CLAY, "advertencia": styles.CARAMEL}
-        colors = [color_por_estado.get(i["estado"], styles.CARAMEL_SOFT) for i in items][::-1]
+        color_por_estado = {"critico": styles.CLAY, "advertencia": styles.MENTA}
+        colors = [color_por_estado.get(i["estado"], styles.MENTA_SOFT) for i in items][::-1]
         canvas.axes.barh(names, values, color=colors, height=0.55)
         canvas.axes.set_xlabel("días", fontsize=9, color=styles.MUTED)
         canvas.axes.tick_params(axis="y", labelsize=8)
@@ -394,12 +394,12 @@ class InventoryScreen(QWidget):
         names = [d["nombre"] for d in data]
         values = [d["ingresos"] for d in data]
         cum_pct = [d["acum_pct"] for d in data]
-        bars = canvas.axes.bar(names, values, color=styles.ESPRESSO, label="Ingresos")
+        bars = canvas.axes.bar(names, values, color=styles.VERDE, label="Ingresos")
         canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
         canvas.axes.tick_params(axis="x", labelsize=7, rotation=15)
         ax2 = canvas.axes.twinx()
-        ax2.plot(names, cum_pct, color=styles.CARAMEL, marker="o", markersize=3, linewidth=1.6, label="% acum.")
-        ax2.axhline(80, color=styles.CARAMEL, linestyle="--", linewidth=1, alpha=0.7)
+        ax2.plot(names, cum_pct, color=styles.MENTA, marker="o", markersize=3, linewidth=1.6, label="% acum.")
+        ax2.axhline(80, color=styles.MENTA, linestyle="--", linewidth=1, alpha=0.7)
         ax2.set_ylim(0, 105)
         ax2.tick_params(labelsize=7, colors=styles.MUTED)
         # etiqueta clase A/B/C sobre cada barra

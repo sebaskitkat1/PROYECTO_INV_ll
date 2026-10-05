@@ -1,4 +1,4 @@
-# frutidata — tu frutería en números (Escritorio)
+# cosecha — tu frutería en números (Escritorio)
 
 App de escritorio en Python + PySide6 para ver ventas, inventario y pronóstico
 de una frutería. Los números salen de los datos (dicts de ejemplo hoy, base

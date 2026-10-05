@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("frutidata")
+        self.setWindowTitle("cosecha")
         self.resize(1200, 800)
         self.setMinimumSize(960, 640)
 

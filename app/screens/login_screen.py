@@ -33,15 +33,15 @@ class LoginScreen(QWidget):
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(12)
 
-        brand = QLabel("frutidata.")
+        brand = QLabel("cosecha.")
         brand.setAlignment(Qt.AlignCenter)
-        brand.setStyleSheet("font-size: 26px; font-weight: 700; color: #2A1E17; letter-spacing: -0.6px;")
+        brand.setStyleSheet("font-size: 26px; font-weight: 700; color: #1D2A1F; letter-spacing: -0.6px;")
         layout.addWidget(brand)
         layout.addSpacing(4)
 
         layout.addWidget(self._field_label("Usuario o correo"))
         self.email_input = QLineEdit()
-        self.email_input.setPlaceholderText("tufruta@ejemplo.com")
+        self.email_input.setPlaceholderText("tucosecha@ejemplo.com")
         self.email_input.textChanged.connect(self._clear_error)
         layout.addWidget(self.email_input)
 

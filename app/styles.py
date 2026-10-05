@@ -1,27 +1,27 @@
 """
-FrutiData — sistema visual calido y minimalista.
+Cosecha — sistema visual fresco y minimalista.
 
-Papel calido, tinta espresso y un solo acento caramelo.
+Papel verdoso, tinta bosque y un solo acento menta.
 Sin azules corporativos, sin sombras duras, sin mayusculas gritadas.
 """
 
-# --- base calida -------------------------------------------------------
+# --- base fresca -------------------------------------------------------
 
-PAPER = "#F7F3ED"          # fondo app
+PAPER = "#F3F6EF"          # fondo app
 SURFACE = "#FFFFFF"        # tarjetas / inputs
-SURFACE_WARM = "#FDFBF7"   # tarjeta secundaria
-INK = "#201914"            # texto principal
-MUTED = "#8C7E71"          # texto secundario
-FAINT = "#B8ABA0"          # terciario / placeholders
-LINE = "#E9E0D5"           # bordes cálidos
-LINE_SOFT = "#F1EAE0"
+SURFACE_WARM = "#FAFCF6"   # tarjeta secundaria
+INK = "#1D2A1F"            # texto principal
+MUTED = "#5D7060"          # texto secundario
+FAINT = "#A9BCA9"          # terciario / decoracion
+LINE = "#DCE5D6"           # bordes suaves
+LINE_SOFT = "#E8EEE3"
 
-ESPRESSO = "#2A1E17"       # primario (botones, texto fuerte)
-ESPRESSO_HOVER = "#3E2E23"
+VERDE = "#2C5233"          # primario (botones, texto fuerte)
+VERDE_HOVER = "#3B6340"
 
-CARAMEL = "#C27A3A"        # único acento
-CARAMEL_SOFT = "#F5E7D3"   # fondo activo
-CARAMEL_LINE = "#E3C9A8"
+MENTA = "#4C9A5F"          # unico acento
+MENTA_SOFT = "#DDEBD9"     # fondo activo
+MENTA_LINE = "#B7D4B4"
 
 SAGE = "#5B7A5A"
 SAGE_BG = "#EAF0E8"
@@ -30,12 +30,12 @@ CLAY_BG = "#F8E8E2"
 HONEY = "#8A6A1B"
 HONEY_BG = "#F7F0D9"
 
-# --- aliases compat (el codigo viejo sigue funcionando, ahora calido) ---
+# --- aliases compat (codigo viejo que aun usa los nombres anteriores) ---
 
-PRIMARY = ESPRESSO
-PRIMARY_HOVER = ESPRESSO_HOVER
-LIGHT_BLUE = CARAMEL_SOFT
-LIGHT_BLUE_BORDER = CARAMEL_LINE
+PRIMARY = VERDE
+PRIMARY_HOVER = VERDE_HOVER
+LIGHT_BLUE = MENTA_SOFT
+LIGHT_BLUE_BORDER = MENTA_LINE
 
 TEXT_DARK = INK
 TEXT_GRAY = MUTED
@@ -55,9 +55,9 @@ WARNING_BG = HONEY_BG
 
 FONT_FAMILY = "Segoe UI Variable, Segoe UI, Inter, system-ui, sans-serif"
 
-# paleta para matplotlib (tierra, sin azul)
-CHART_COLORS = [ESPRESSO, CARAMEL, SAGE, "#7A6A5A", HONEY, CLAY]
-CHART_GRID = "#EFE7DA"
+# paleta para matplotlib (verdes, sin azul)
+CHART_COLORS = [VERDE, MENTA, SAGE, "#7C8B7A", HONEY, CLAY]
+CHART_GRID = "#E4EADB"
 
 GLOBAL_STYLESHEET = f"""
 QWidget {{
@@ -105,7 +105,7 @@ QLabel[role="micro"] {{
     color: {FAINT};
 }}
 
-/* Inputs: cálidos, foco caramelo */
+/* Inputs: frescos, foco menta */
 QLineEdit {{
     border: 1px solid {LINE};
     border-radius: 10px;
@@ -115,7 +115,7 @@ QLineEdit {{
     min-height: 34px;
 }}
 QLineEdit:focus {{
-    border: 1px solid {CARAMEL};
+    border: 1px solid {MENTA};
     background-color: {SURFACE};
 }}
 
@@ -128,7 +128,7 @@ QComboBox {{
     min-height: 32px;
 }}
 QComboBox:hover {{
-    border: 1px solid {CARAMEL_LINE};
+    border: 1px solid {MENTA_LINE};
 }}
 QComboBox::drop-down {{
     border: none;
@@ -137,7 +137,7 @@ QComboBox::drop-down {{
 QComboBox QAbstractItemView {{
     background-color: {SURFACE};
     border: 1px solid {LINE};
-    selection-background-color: {CARAMEL_SOFT};
+    selection-background-color: {MENTA_SOFT};
     selection-color: {INK};
     outline: none;
 }}
@@ -153,24 +153,24 @@ QPushButton {{
     min-height: 34px;
 }}
 QPushButton[role="primary"] {{
-    background-color: {ESPRESSO};
-    color: #fFF8F0;
+    background-color: {VERDE};
+    color: #F2F8F0;
     border: none;
 }}
 QPushButton[role="primary"]:hover {{
-    background-color: {ESPRESSO_HOVER};
+    background-color: {VERDE_HOVER};
 }}
 QPushButton[role="primary"]:disabled {{
-    background-color: #c9BBAE;
-    color: #fFF8F0;
+    background-color: #B7C6B2;
+    color: #F2F8F0;
 }}
 QPushButton[role="secondary"] {{
-    background-color: #eFE7DA;
+    background-color: #E3EBDC;
     color: {INK};
     border: none;
 }}
 QPushButton[role="secondary"]:hover {{
-    background-color: #e6DAC7;
+    background-color: #D5E2CC;
 }}
 QPushButton[role="outline"] {{
     background-color: {SURFACE};
@@ -178,8 +178,8 @@ QPushButton[role="outline"] {{
     border: 1px solid {LINE};
 }}
 QPushButton[role="outline"]:hover {{
-    border: 1px solid {CARAMEL};
-    color: {ESPRESSO};
+    border: 1px solid {MENTA};
+    color: {VERDE};
     background-color: {SURFACE_WARM};
 }}
 QPushButton[role="ghost"] {{
@@ -190,12 +190,12 @@ QPushButton[role="ghost"] {{
 }}
 QPushButton[role="ghost"]:hover {{
     color: {INK};
-    background-color: #eFE7DA;
+    background-color: #E3EBDC;
 }}
 
-/* Navegación segmentada */
+/* Navegacion segmentada */
 QFrame[role="segNav"] {{
-    background-color: #eFE7DA;
+    background-color: #E3EBDC;
     border: none;
     border-radius: 999px;
 }}
@@ -231,7 +231,7 @@ QPushButton[role="link"]:hover {{
     background-color: transparent;
 }}
 
-/* Tarjetas: radio amplio, borde cálido fino, sin sombra */
+/* Tarjetas: radio amplio, borde suave fino, sin sombra */
 QFrame[role="card"] {{
     background-color: {SURFACE};
     border: 1px solid {LINE};
@@ -249,7 +249,7 @@ QFrame[role="infoBanner"] {{
 }}
 QFrame[role="alertDanger"] {{
     background-color: {CLAY_BG};
-    border: 1px solid #e5BEB2;
+    border: 1px solid #E5BEB2;
     border-radius: 12px;
 }}
 QFrame[role="topbar"] {{
@@ -271,7 +271,7 @@ QTableWidget {{
     background-color: {SURFACE};
     gridline-color: {LINE_SOFT};
     font-size: 12.5px;
-    selection-background-color: {CARAMEL_SOFT};
+    selection-background-color: {MENTA_SOFT};
     selection-color: {INK};
     alternate-background-color: {SURFACE};
     outline: none;
@@ -290,7 +290,7 @@ QTableWidget::item {{
     border-bottom: 1px solid {LINE_SOFT};
 }}
 QTableWidget::item:selected {{
-    background-color: {CARAMEL_SOFT};
+    background-color: {MENTA_SOFT};
 }}
 
 QScrollArea {{
@@ -302,7 +302,7 @@ QScrollBar:vertical {{
     width: 10px;
 }}
 QScrollBar::handle:vertical {{
-    background: #d8CBB9;
+    background: #BFD0B6;
     border-radius: 5px;
     min-height: 30px;
 }}

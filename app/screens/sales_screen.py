@@ -258,7 +258,7 @@ class SalesScreen(QWidget):
             self.scatter_canvas.axes.scatter(
                 [d["ingresos"] for d in rows],
                 [d["margen"] for d in rows],
-                color=styles.ESPRESSO, alpha=0.7, s=46, edgecolors="white", linewidths=0.8,
+                color=styles.VERDE, alpha=0.7, s=46, edgecolors="white", linewidths=0.8,
             )
             # anota el top por ingresos para orientar rapido
             top = max(rows, key=lambda d: d["ingresos"])
