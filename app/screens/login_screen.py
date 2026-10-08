@@ -14,7 +14,9 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
+from app.data import repository
 from app.data.app_state import AppState
+from app.data.db import DBError
 
 
 class LoginScreen(QWidget):
@@ -101,7 +103,26 @@ class LoginScreen(QWidget):
         QTimer.singleShot(600, self._finish_login)
 
     def _finish_login(self) -> None:
+        email = self.email_input.text()
+        password = self.password_input.text()
+        try:
+            user = repository.auth(email, password)
+        except repository.AuthError:
+            self._fallo("Credenciales inválidas.")
+            return
+        except DBError:
+            # sin base: entra en modo ejemplo con la validacion de formato
+            user = None
         self.login_button.setEnabled(True)
         self.login_button.setText("Entrar")
-        AppState.set_user(self.email_input.text())
+        if user is None:
+            AppState.set_user(email)
+        else:
+            AppState.set_user(user["correo"], user["id"], repository.sucursal_id())
         self.on_login("dashboard")
+
+    def _fallo(self, texto: str) -> None:
+        self.login_button.setEnabled(True)
+        self.login_button.setText("Entrar")
+        self.error_label.setText(texto)
+        self.error_label.setVisible(True)

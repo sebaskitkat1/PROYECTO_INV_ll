@@ -1,24 +1,33 @@
 """Datos compartidos en memoria. Vive mientras la app esta abierta.
 
-Asi lo que editas en inventario no se pierde al cambiar de pantalla.
-Cuando llegue la base, estas funciones leen de ahi en vez del mock.
+Primero intenta la base (repository); sin conexion usa el ejemplo.
+Cuando llegue la base definitiva, aqui solo queda el camino de la base.
 """
 from __future__ import annotations
 
-from app.data import analytics, mock_data
+from app.data import analytics, mock_data, repository
+from app.data.db import DBError
 
 _inventory: list[dict] | None = None
+
+
+def _desde_base() -> list[dict] | None:
+    try:
+        return repository.inventory_rows()
+    except DBError:
+        return None
 
 
 def get_inventory() -> list[dict]:
     global _inventory
     if _inventory is None:
-        _inventory = []
-        for r in mock_data.get_inventory():
-            d = dict(r)
-            # consumo congelado de los datos iniciales; dias se recalcula
-            d["consumoDiario"] = analytics.daily_use(d)
-            _inventory.append(d)
+        _inventory = _desde_base()
+        if _inventory is None:
+            _inventory = []
+            for r in mock_data.get_inventory():
+                d = dict(r)
+                d["consumoDiario"] = analytics.daily_use(d)
+                _inventory.append(d)
     return _inventory
 
 

@@ -3,6 +3,7 @@ import os
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ["CAFE_DATOS"] = "mock"  # pruebas deterministas, sin base
 
 from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QSpinBox
 

@@ -25,8 +25,10 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, mock_data
+from app.data import analytics, mock_data, repository
 from app.data import store
+from app.data.app_state import AppState
+from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
 
@@ -318,6 +320,22 @@ class InventoryScreen(QWidget):
             self._reload_table()
             return
         nuevo = int(nuevo) if entero else round(nuevo, 2)
+        if inv.get("id_ingrediente") is not None and repository.activa():
+            # guarda en la base (kardex) y recarga desde la vista
+            try:
+                if col == 1:
+                    repository.save_stock(inv["id_ingrediente"], nuevo, AppState.user_id,
+                                          f"Ajuste manual desde inventario ({name})")
+                else:
+                    repository.update_minimo(inv["id_ingrediente"], nuevo)
+            except DBError:
+                QMessageBox.warning(self, "Sin conexion", "No se pudo guardar en la base.")
+                self._reload_table()
+                return
+            self.inventory = store.reset_inventory()
+            self._reload_table()
+            self._refresh_summary_and_alert()
+            return
         if col == 1:
             inv["stockActual"] = nuevo
         else:
