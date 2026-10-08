@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, mock_data
+from app.data import analytics, mock_data, repository
+from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
 
@@ -65,6 +66,28 @@ class PredictionScreen(QWidget):
 
     # -- grafica historico vs prediccion -----------------------------------
 
+    @staticmethod
+    def _historia() -> list:
+        # serie diaria real; ejemplo si no hay conexion
+        try:
+            return repository.sales_history(90)
+        except DBError:
+            hoy = datetime.date.today()
+            hist = []
+            for d in mock_data.get_prediction_data():
+                f = analytics.parse_dia(d["dia"], hoy)
+                if f is not None and d["historico"] is not None:
+                    hist.append((f, float(d["historico"])))
+            hist.sort()
+            return hist
+
+    @staticmethod
+    def _detalle() -> list:
+        try:
+            return repository.sales_detail()
+        except DBError:
+            return mock_data.get_sales_detail()
+
     def _build_line_chart_card(self) -> QFrame:
         card = QFrame()
         card.setProperty("role", "card")
@@ -76,14 +99,8 @@ class PredictionScreen(QWidget):
         layout.addWidget(title)
 
         canvas = MplCanvas(height=3.2)
-        # historico del mock con fecha real, futuro diario calculado
-        hoy = datetime.date.today()
-        hist = []
-        for d in mock_data.get_prediction_data():
-            f = analytics.parse_dia(d["dia"], hoy)
-            if f is not None and d["historico"] is not None:
-                hist.append((f, float(d["historico"])))
-        hist.sort()
+        # historico con fecha real, futuro diario calculado
+        hist = self._historia()
         futuro = analytics.forecast_daily(hist, 30)
         dias = [d for d, _ in hist] + [d for d, _ in futuro]
         historico = [v for _, v in hist] + [None] * len(futuro)
@@ -117,13 +134,7 @@ class PredictionScreen(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # backtest: si el modelo no gana a lo simple, se avisa preliminar
-        hoy = datetime.date.today()
-        hist = []
-        for d in mock_data.get_prediction_data():
-            f = analytics.parse_dia(d["dia"], hoy)
-            if f is not None and d["historico"] is not None:
-                hist.append((f, float(d["historico"])))
-        hist.sort()
+        hist = self._historia()
         futuro = analytics.forecast_daily(hist, 30)
         bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
         total_30 = sum(v for _, v in futuro)
@@ -139,7 +150,7 @@ class PredictionScreen(QWidget):
 
         columns = ["Producto", "Ventas Actuales", "Ventas Predichas", "Crecimiento Esperado"]
         # reparto por participacion: la suma cuadra con el total pronosticado
-        rows = analytics.product_forecast_share(mock_data.get_sales_detail(), total_30, 5)
+        rows = analytics.product_forecast_share(self._detalle(), total_30, 5)
 
         table = QTableWidget(len(rows), len(columns))
         table.setHorizontalHeaderLabels(columns)

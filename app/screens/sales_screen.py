@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, mock_data
+from app.data import analytics, mock_data, repository
+from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
 
@@ -143,12 +144,15 @@ class SalesScreen(QWidget):
     # -- datos -----------------------------------------------------------
 
     def _load_rows(self) -> list[dict]:
-        rows = []
-        for r in mock_data.get_sales_detail():
-            d = dict(r)
-            d["categoria"] = CATEGORY_MAP.get(r["nombre"], "Frutas")
-            rows.append(d)
-        return rows
+        try:
+            return repository.sales_detail()
+        except DBError:
+            rows = []
+            for r in mock_data.get_sales_detail():
+                d = dict(r)
+                d["categoria"] = CATEGORY_MAP.get(r["nombre"], "Frutas")
+                rows.append(d)
+            return rows
 
     def _apply_filters(self, rows: list[dict]) -> list[dict]:
         cat = self.category_combo.currentText() if hasattr(self, "category_combo") else "Todos"
@@ -172,7 +176,8 @@ class SalesScreen(QWidget):
         tot = analytics.sales_totals(filtered)
         self.status_label.setText(
             f"{len(filtered)} de {len(self.all_rows)} · "
-            f"{analytics.fmt_money(tot['ingresos'])} · margen {tot['margen_pond']:.0f}%"
+            f"{analytics.fmt_money(tot['ingresos'])} · margen {tot['margen_pond']:.0f}% · "
+            f"{repository.etiqueta_fuente()}"
         )
 
     def _export_csv(self) -> None:

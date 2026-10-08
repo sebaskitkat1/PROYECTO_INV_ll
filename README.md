@@ -27,6 +27,24 @@ python main.py
 ```powershell
 python -m unittest discover tests
 ```
+Usan datos de ejemplo (`CAFE_DATOS=mock` interno) para ser deterministas.
+
+## Base de datos
+
+La app lee de MySQL si hay conexión, y usa el ejemplo si no.
+
+```powershell
+# 1. Cargar el schema (la base con datos se llama frutidata)
+mysql -u root -p < frutidata_schema.sql
+# 2. Copiar .env.example como .env y poner tus valores (nunca se sube)
+# 3. Datos de prueba:  CALL sp_generar_ventas_demo(60);
+# 4. Dar de alta tu contraseña:
+python -c "import bcrypt; print(bcrypt.hashpw(b'TU_CLAVE', bcrypt.gensalt()).decode())"
+#    UPDATE frutidata.usuarios SET password_hash='<hash>' WHERE correo='caja@frutidata.local';
+```
+
+Sin MySQL a la mano la app abre igual con el ejemplo. El status de
+Ventas indica la fuente ("base de datos" o "ejemplo").
 
 ## Estructura
 

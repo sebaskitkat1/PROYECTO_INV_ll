@@ -8,7 +8,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app import styles
-from app.data import analytics, mock_data
+from app.data import analytics, mock_data, repository
+from app.data.db import DBError
 from app.data.store import get_inventory
 from app.widgets.kpi_card import KpiCard
 from app.widgets.mpl_canvas import MplCanvas
@@ -67,10 +68,13 @@ class DashboardScreen(QWidget):
     # -- secciones -----------------------------------------------------
 
     def _build_kpi_row(self, on_navigate: Callable[[str], None]) -> QGridLayout:
-        # todo sale de los dicts: serie de 7 dias, detalle y stock compartido
-        kpis = analytics.dashboard_kpis(
-            mock_data.get_sales_detail(), mock_data.get_sales_last_7_days(), get_inventory()
-        )
+        # base primero, ejemplo si no hay conexion
+        try:
+            kpis = repository.dashboard_kpis()
+        except DBError:
+            kpis = analytics.dashboard_kpis(
+                mock_data.get_sales_detail(), mock_data.get_sales_last_7_days(), get_inventory()
+            )
         grid = QGridLayout()
         grid.setSpacing(14)
 
@@ -109,7 +113,10 @@ class DashboardScreen(QWidget):
     def _sales_line_chart_card(self) -> QFrame:
         card = self._chart_card("Ventas, últimos 7 días")
         canvas = MplCanvas(height=2.6)
-        data = mock_data.get_sales_last_7_days()
+        try:
+            data = repository.sales_last_7_days()
+        except DBError:
+            data = mock_data.get_sales_last_7_days()
         days = [d["day"] for d in data]
         values = [d["ventas"] for d in data]
 
@@ -126,7 +133,10 @@ class DashboardScreen(QWidget):
         card = self._chart_card("Lo más vendido")
         canvas = MplCanvas(height=2.6)
         # top real por ingresos, no lista fija
-        data = analytics.top_products(mock_data.get_sales_detail(), 5)
+        try:
+            data = analytics.top_products(repository.sales_detail(), 5)
+        except DBError:
+            data = analytics.top_products(mock_data.get_sales_detail(), 5)
         products = [d["product"] for d in data][::-1]
         values = [d["ingresos"] for d in data][::-1]
         colors = [styles.LINE] * (len(values) - 1) + [styles.MENTA]
