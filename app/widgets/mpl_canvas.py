@@ -3,8 +3,21 @@ from __future__ import annotations
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 
 from app import styles
+
+
+def fmt_miles(v: float) -> str:
+    # $4k si es multiplo de 1000, $4.5k si no (evita etiquetas repetidas)
+    miles = float(v) / 1000.0
+    if miles.is_integer():
+        return f"${miles:.0f}k"
+    return f"${miles:.1f}k"
+
+
+def _miles_fmt(v, _) -> str:
+    return fmt_miles(v)
 
 
 class MplCanvas(FigureCanvasQTAgg):
@@ -32,3 +45,7 @@ class MplCanvas(FigureCanvasQTAgg):
     def redraw(self) -> None:
         self.fig.tight_layout(pad=1.2)
         self.draw()
+
+    @staticmethod
+    def miles_formatter() -> FuncFormatter:
+        return FuncFormatter(_miles_fmt)

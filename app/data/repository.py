@@ -186,3 +186,28 @@ def auth(correo: str, password: str) -> dict:
     db.execute("UPDATE usuarios SET ultimo_acceso = NOW() WHERE id_usuario = %s", (uid,))
     return {"id": int(uid), "nombre": str(filas[0]["nombre"]),
             "correo": str(filas[0]["correo"]), "rol": int(filas[0]["id_rol"])}
+
+
+def map_lote_row(r: dict) -> dict:
+    return {"ingrediente": str(r["ingrediente"]),
+            "unidad": str(r.get("unidad") or "kg"),
+            "cantidad": float(r.get("cantidad") or 0),
+            "caducidad": str(r.get("fecha_caducidad") or ""),
+            "dias": int(r.get("dias_restantes") or 0),
+            "estado": str(r.get("estado_lote") or "vigente")}
+
+
+def expiry_rows() -> list[dict]:
+    _hay_base()
+    filas = db.fetchall(
+        "SELECT ingrediente, unidad, cantidad, fecha_caducidad, dias_restantes, estado_lote "
+        "FROM v_lotes_por_caducar WHERE id_sucursal = %s", (sucursal_id(),))
+    return [map_lote_row(r) for r in filas]
+
+
+def purge_expired(id_usuario: int | None) -> int:
+    _hay_base()
+    salidas = db.callproc("sp_purgar_caducados", (sucursal_id(), id_usuario))
+    if salidas:
+        return int(salidas[0].get("lotes_purgados") or 0)
+    return 0

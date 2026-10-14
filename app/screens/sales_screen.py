@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -23,9 +24,11 @@ from PySide6.QtWidgets import (
 
 from app import styles
 from app.data import analytics, mock_data, repository
+from app.data import export_csv
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
+from app.widgets.table_items import NumericItem, TextItem
 
 CATEGORIAS = ["Todos", "Frutas", "Verduras", "Jugos"]
 
@@ -181,17 +184,20 @@ class SalesScreen(QWidget):
         )
 
     def _export_csv(self) -> None:
-        import csv
         filtered = self._apply_filters(self.all_rows)
         if not filtered:
+            QMessageBox.information(self, "Exportar", "No hay filas para exportar.")
             return
         path, _ = QFileDialog.getSaveFileName(self, "Exportar ventas filtradas", "ventas_filtradas.csv", "CSV (*.csv)")
         if not path:
             return
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["nombre", "categoria", "cantidad", "ingresos", "margen", "tendencia"])
-            w.writeheader()
-            w.writerows(filtered)
+        try:
+            n = export_csv.guardar_csv(
+                path, ["nombre", "categoria", "cantidad", "ingresos", "margen", "tendencia"], filtered)
+        except export_csv.ExportError as e:
+            QMessageBox.warning(self, "Exportar", str(e))
+            return
+        QMessageBox.information(self, "Exportar", f"Se guardaron {n} filas.")
 
     # -- tabla -------------------------------------------------------------
 
@@ -213,10 +219,12 @@ class SalesScreen(QWidget):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
         for r, row in enumerate(rows):
-            self.table.setItem(r, 0, QTableWidgetItem(row["nombre"]))
-            self.table.setItem(r, 1, self._right_aligned(f"{row['cantidad']:,}"))
-            self.table.setItem(r, 2, self._right_aligned(f"${row['ingresos']:,.2f}"))
-            self.table.setItem(r, 3, self._right_aligned(f"{row['margen']}%"))
+            nombre_item = TextItem(row["nombre"])
+            nombre_item.setFlags(nombre_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(r, 0, nombre_item)
+            self.table.setItem(r, 1, NumericItem(f"{row['cantidad']:,}", row["cantidad"]))
+            self.table.setItem(r, 2, NumericItem(f"${row['ingresos']:,.2f}", row["ingresos"]))
+            self.table.setItem(r, 3, NumericItem(f"{row['margen']}%", row["margen"]))
             trend_item = QTableWidgetItem("+ " if row["tendencia"] == "up" else "- ")
             trend_item.setTextAlignment(Qt.AlignCenter)
             color = styles.SAGE if row["tendencia"] == "up" else styles.CLAY
@@ -226,12 +234,6 @@ class SalesScreen(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.setMinimumHeight(min(40 * len(rows) + 40, 420) if rows else 120)
         self.table.setSortingEnabled(was_sorting)
-
-    @staticmethod
-    def _right_aligned(text: str) -> QTableWidgetItem:
-        item = QTableWidgetItem(text)
-        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        return item
 
     # -- grafica de dispersion ---------------------------------------------
 
@@ -248,7 +250,7 @@ class SalesScreen(QWidget):
         canvas = MplCanvas(height=3)
         canvas.axes.set_xlabel("Ingresos", fontsize=9, color=styles.MUTED)
         canvas.axes.set_ylabel("Margen %", fontsize=9, color=styles.MUTED)
-        canvas.axes.xaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
+        canvas.axes.xaxis.set_major_formatter(MplCanvas.miles_formatter())
         layout.addWidget(canvas)
         return card, canvas
 
@@ -258,7 +260,7 @@ class SalesScreen(QWidget):
         self.scatter_canvas._style_axes(self.scatter_canvas.axes)
         self.scatter_canvas.axes.set_xlabel("Ingresos", fontsize=9, color=styles.MUTED)
         self.scatter_canvas.axes.set_ylabel("Margen %", fontsize=9, color=styles.MUTED)
-        self.scatter_canvas.axes.xaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
+        self.scatter_canvas.axes.xaxis.set_major_formatter(MplCanvas.miles_formatter())
         if rows:
             self.scatter_canvas.axes.scatter(
                 [d["ingresos"] for d in rows],

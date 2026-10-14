@@ -26,11 +26,12 @@ from PySide6.QtWidgets import (
 
 from app import styles
 from app.data import analytics, mock_data, repository
-from app.data import store
+from app.data import export_csv, store
 from app.data.app_state import AppState
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
+from app.widgets.table_items import NumericItem
 
 ESTADO_CONFIG = {
     "optimo": (styles.SUCCESS_BG, styles.SUCCESS, "ÓPTIMO"),
@@ -40,16 +41,6 @@ ESTADO_CONFIG = {
 }
 
 ESTADO_ORDEN = {"critico": 0, "advertencia": 1, "optimo": 2, "sin_minimo": 3}
-
-
-class NumericItem(QTableWidgetItem):
-    """Item que ordena por valor numerico (UserRole), no por texto."""
-
-    def __lt__(self, other):
-        try:
-            return float(self.data(Qt.UserRole)) < float(other.data(Qt.UserRole))
-        except Exception:
-            return super().__lt__(other)
 
 
 class EstadoItem(QTableWidgetItem):
@@ -116,8 +107,10 @@ class InventoryScreen(QWidget):
         # lista compartida: lo editado sigue ahi al volver
         self.inventory: list[dict] = store.get_inventory()
 
-        self.alert_banner = self._build_alert_banner()
+        self.alert_banner, self.alert_label = self._build_alert_banner()
         content_layout.addWidget(self.alert_banner)
+        self.expiry_banner, self.expiry_label = self._build_alert_banner()
+        content_layout.addWidget(self.expiry_banner)
         content_layout.addLayout(self._build_summary_row())
         self.table = self._build_table()
         content_layout.addWidget(self.table)
@@ -128,20 +121,52 @@ class InventoryScreen(QWidget):
         scroll.setWidget(content)
         root.addWidget(scroll)
         self._refresh_summary_and_alert()
+        self._refresh_expiry()
 
     # -- resumen -------------------------------------------------------
 
-    def _build_alert_banner(self) -> QFrame:
+    @staticmethod
+    def _build_alert_banner():
         banner = QFrame()
         banner.setProperty("role", "alertDanger")
         layout = QHBoxLayout(banner)
         layout.setContentsMargins(16, 12, 16, 12)
-        self.alert_label = QLabel("")
-        self.alert_label.setWordWrap(True)
-        self.alert_label.setStyleSheet(f"color: {styles.CLAY}; font-size: 12.5px; font-weight: 600;")
-        layout.addWidget(self.alert_label, stretch=1)
+        label = QLabel("")
+        label.setWordWrap(True)
+        label.setStyleSheet(f"color: {styles.CLAY}; font-size: 12.5px; font-weight: 600;")
+        layout.addWidget(label, stretch=1)
         banner.setVisible(False)
-        return banner
+        return banner, label
+
+    def _refresh_expiry(self) -> None:
+        # lotes por caducar desde la base; sin conexion se oculta
+        try:
+            lotes = repository.expiry_rows()
+        except DBError:
+            self.expiry_banner.setVisible(False)
+            return
+        vencidos = [l for l in lotes if l["estado"] == "vencido"]
+        if not lotes:
+            self.expiry_banner.setVisible(False)
+            return
+        primero = lotes[0]
+        self.expiry_label.setText(
+            f"{len(lotes)} lotes por caducar ({len(vencidos)} vencidos): "
+            f"{primero['ingrediente']} vence {primero['caducidad']}."
+        )
+        self.expiry_banner.setVisible(True)
+
+    def _purge_expired(self) -> None:
+        try:
+            n = repository.purge_expired(AppState.user_id)
+        except DBError:
+            QMessageBox.warning(self, "Caducidad", "Sin conexion a la base.")
+            return
+        QMessageBox.information(self, "Caducidad", f"Se dieron de baja {n} lotes vencidos.")
+        self.inventory = store.reset_inventory()
+        self._reload_table()
+        self._refresh_summary_and_alert()
+        self._refresh_expiry()
 
     def _build_summary_row(self) -> QGridLayout:
         grid = QGridLayout()
@@ -201,30 +226,41 @@ class InventoryScreen(QWidget):
         reset_btn.setCursor(Qt.PointingHandCursor)
         reset_btn.clicked.connect(self._reset_data)
         row.addWidget(reset_btn)
+        self.purge_btn = QPushButton("Purgar vencidos")
+        self.purge_btn.setProperty("role", "outline")
+        self.purge_btn.setCursor(Qt.PointingHandCursor)
+        self.purge_btn.clicked.connect(self._purge_expired)
+        row.addWidget(self.purge_btn)
         row.addStretch()
         return row
 
     def _export_order(self) -> None:
-        import csv
         bajos = [i for i in self.inventory if i["estado"] in ("critico", "advertencia")]
         if not bajos:
+            QMessageBox.information(self, "Orden de compra", "No hay productos por pedir.")
             return
         path, _ = QFileDialog.getSaveFileName(self, "Guardar orden de compra", "orden_compra.csv", "CSV (*.csv)")
         if not path:
             return
         # cantidad sugerida = llevar el stock al doble del minimo
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado", "sugerido"])
-            w.writeheader()
-            for r in sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]):
-                fila = {k: r.get(k, "") for k in ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado"]}
-                fila["sugerido"] = analytics.reorder_qty(r)
-                w.writerow(fila)
+        filas = []
+        for r in sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]):
+            fila = {k: r.get(k, "") for k in ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado"]}
+            fila["sugerido"] = analytics.reorder_qty(r)
+            filas.append(fila)
+        try:
+            n = export_csv.guardar_csv(
+                path, ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado", "sugerido"], filas)
+        except export_csv.ExportError as e:
+            QMessageBox.warning(self, "Orden de compra", str(e))
+            return
+        QMessageBox.information(self, "Orden de compra", f"Se guardaron {n} líneas.")
 
     def _reset_data(self) -> None:
         self.inventory = store.reset_inventory()
         self._reload_table()
         self._refresh_summary_and_alert()
+        self._refresh_expiry()
 
     # -- tabla -----------------------------------------------------------
 
@@ -264,11 +300,9 @@ class InventoryScreen(QWidget):
 
             dias = row.get("diasAgotar")
             if dias is None:
-                dias_item = NumericItem("—")
-                dias_item.setData(Qt.UserRole, float("inf"))
+                dias_item = NumericItem("—", float("inf"))
             else:
-                dias_item = self._numeric_item(self._fmt_dias(float(dias), row.get("unidad")))
-                dias_item.setData(Qt.UserRole, float(dias))
+                dias_item = NumericItem(self._fmt_dias(float(dias), row.get("unidad")), float(dias))
             dias_item.setFlags(dias_item.flags() & ~Qt.ItemIsEditable)
             if dias is not None and dias <= 5:
                 dias_item.setForeground(QColor(styles.DANGER))
@@ -360,23 +394,13 @@ class InventoryScreen(QWidget):
 
     @classmethod
     def _stock_item(cls, value: float, unidad) -> NumericItem:
-        item = NumericItem(cls._fmt_stock(value, unidad))
-        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        item.setData(Qt.UserRole, float(value))
-        return item
+        return NumericItem(cls._fmt_stock(value, unidad), float(value))
 
     @staticmethod
     def _fmt_dias(dias: float, unidad) -> str:
         if unidad in analytics.ENTERO_UNIDADES:
             return f"{int(round(dias))} días"
         return f"{dias:.1f}".rstrip("0").rstrip(".") + " días"
-
-    @staticmethod
-    def _numeric_item(value, suffix: str = "") -> NumericItem:
-        item = NumericItem(f"{value}{suffix}")
-        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        item.setData(Qt.UserRole, value)
-        return item
 
     # -- graficas ----------------------------------------------------------
 
@@ -413,7 +437,7 @@ class InventoryScreen(QWidget):
         values = [d["ingresos"] for d in data]
         cum_pct = [d["acum_pct"] for d in data]
         bars = canvas.axes.bar(names, values, color=styles.VERDE, label="Ingresos")
-        canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
+        canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.axes.tick_params(axis="x", labelsize=7, rotation=15)
         ax2 = canvas.axes.twinx()
         ax2.plot(names, cum_pct, color=styles.MENTA, marker="o", markersize=3, linewidth=1.6, label="% acum.")

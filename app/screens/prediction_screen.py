@@ -118,7 +118,7 @@ class PredictionScreen(QWidget):
         paso = 5
         canvas.axes.set_xticks(x[::paso])
         canvas.axes.set_xticklabels(etiquetas[::paso], rotation=30, fontsize=7, ha="right")
-        canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
+        canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.axes.legend(fontsize=8, frameon=False, loc="upper left")
         canvas.redraw()
         layout.addWidget(canvas)
