@@ -191,7 +191,9 @@ def dow_factors(fechas: list[_dt.date], valores: list[float]) -> dict[int, float
     return {d: f / media for d, f in factores.items()} if media else {}
 
 
-def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30) -> list[tuple[_dt.date, float]]:
+def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30,
+                 ndigits: int = -1) -> list[tuple[_dt.date, float]]:
+    # ndigits sigue la escala: -1 en pesos (miles), 0 en unidades
     if not history:
         return []
     hist = sorted(history, key=lambda p: p[0])
@@ -204,7 +206,7 @@ def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30) -> li
     for k in range(1, steps + 1):
         f = ultima + _dt.timedelta(days=k)
         v = (nivel + pend * k) * dow.get(f.weekday(), 1.0)
-        out.append((f, max(0.0, round(v, -1))))
+        out.append((f, max(0.0, round(v, ndigits))))
     return out
 
 

@@ -123,7 +123,7 @@ class DashboardScreen(QWidget):
         canvas.axes.plot(days, values, color=styles.VERDE, linewidth=2.2, marker="o", markersize=4,
                          markerfacecolor=styles.MENTA, markeredgecolor=styles.VERDE)
         canvas.axes.set_ylabel("")
-        canvas.axes.yaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
+        canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.redraw()
 
         card.layout().addWidget(canvas)
@@ -142,7 +142,7 @@ class DashboardScreen(QWidget):
         colors = [styles.LINE] * (len(values) - 1) + [styles.MENTA]
 
         canvas.axes.barh(products, values, color=colors, height=0.55)
-        canvas.axes.xaxis.set_major_formatter(lambda v, _: f"${v/1000:.0f}k")
+        canvas.axes.xaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.axes.tick_params(axis="y", labelsize=8)
         canvas.redraw()
 
