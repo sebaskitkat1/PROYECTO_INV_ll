@@ -21,6 +21,13 @@ class TestPronosticoFechas(unittest.TestCase):
         fut = analytics.forecast_daily(hist, 3)
         self.assertEqual([v for _, v in fut], [200.0, 210.0, 220.0])
 
+    def test_ndigits_segun_escala(self):
+        hist = serie_lineal(100, 10)
+        unid = [(d, 6.3) for d, _ in hist]
+        self.assertEqual([v for _, v in analytics.forecast_daily(unid, 1, 0)], [6.0])
+        # en pesos se redondea a decenas como antes
+        self.assertEqual([v for _, v in analytics.forecast_daily(hist, 1)], [200.0])
+
     def test_pasos_diarios_consecutivos(self):
         hist = serie_lineal(100, 7)
         fut = analytics.forecast_daily(hist, 30)
