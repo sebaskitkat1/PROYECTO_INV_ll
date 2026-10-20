@@ -23,8 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, mock_data, repository
-from app.data import export_csv
+from app.data import analytics, export_csv, mock_data, repository
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar

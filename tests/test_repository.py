@@ -28,6 +28,16 @@ class TestMapeo(unittest.TestCase):
     def test_etiqueta_fuente_ejemplo(self):
         self.assertEqual(repository.etiqueta_fuente(), "ejemplo")
 
+    def test_bitacora_mapea_resultado_y_fecha(self):
+        import datetime
+        r = repository.map_bitacora_row({
+            "fecha_hora": datetime.datetime(2026, 10, 19, 8, 30), "usuario": None,
+            "correo_intentado": "caja@frutidata.local", "exitoso": 1, "equipo": None})
+        self.assertEqual(r["fecha"], "2026-10-19 08:30")
+        self.assertEqual(r["usuario"], "—")
+        self.assertEqual(r["resultado"], "Correcto")
+        self.assertEqual(r["equipo"], "—")
+
 
 class TestFallback(unittest.TestCase):
     def test_sin_base_usa_mock(self):

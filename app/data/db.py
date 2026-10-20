@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 
@@ -9,10 +10,21 @@ class DBError(Exception):
     """No hay base disponible (caida, credenciales o red)."""
 
 
+def _env_candidates() -> list[Path]:
+    rutas = []
+    if getattr(sys, "frozen", False):
+        rutas.append(Path(sys.executable).resolve().parent / ".env")
+    rutas.append(Path(__file__).resolve().parent.parent.parent / ".env")
+    rutas.append(Path.cwd() / ".env")
+    return rutas
+
+
 def load_env(path: str | Path | None = None) -> dict:
     datos: dict = {}
-    archivo = Path(path) if path else Path(__file__).resolve().parent.parent.parent / ".env"
-    if not archivo.exists():
+    archivo: Path | None = Path(path) if path is not None else None
+    if archivo is None:
+        archivo = next((r for r in _env_candidates() if r.exists()), None)
+    if archivo is None or not archivo.exists():
         return datos
     for linea in archivo.read_text(encoding="utf-8").splitlines():
         linea = linea.strip()
@@ -27,7 +39,9 @@ _ENV = load_env()
 
 
 def config() -> dict:
-    get = lambda k, d: os.getenv(k, _ENV.get(k, d))
+    def get(k, d):
+        return os.getenv(k, _ENV.get(k, d))
+
     return {
         "host": get("DB_HOST", "localhost"),
         "port": int(get("DB_PORT", "3306")),

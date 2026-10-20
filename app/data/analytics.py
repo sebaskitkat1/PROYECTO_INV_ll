@@ -5,8 +5,8 @@ vengan de la base despues) y devuelven cuentas. Sin dependencias nuevas.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import math
-
 
 # -- helpers chicos ------------------------------------------------------
 
@@ -72,7 +72,8 @@ SIN_MINIMO = "sin_minimo"
 ENTERO_UNIDADES = {"pzas", "bidones"}
 
 
-def stock_status(stock: float, minimo: float, consumo: float | None) -> tuple[str, float | None]:
+def stock_status(stock: float, minimo: float, consumo: float | None,
+                 umbral_advertencia: float = 1.25) -> tuple[str, float | None]:
     stock = float(stock or 0)
     minimo = float(minimo or 0)
     if stock <= 0:
@@ -82,7 +83,7 @@ def stock_status(stock: float, minimo: float, consumo: float | None) -> tuple[st
         return (SIN_MINIMO, dias)
     if stock < minimo:
         return ("critico", dias)
-    if stock < minimo * 1.25:
+    if stock < minimo * float(umbral_advertencia or 1.25):
         return ("advertencia", dias)
     return ("optimo", dias)
 
@@ -113,7 +114,8 @@ def reorder_qty(item: dict, objetivo: float = 2.0) -> int:
     return max(0, math.ceil(falta))
 
 
-def abc_classes(pareto: list[dict]) -> list[dict]:
+def abc_classes(pareto: list[dict], corte_a: float = 80.0,
+                corte_b: float = 95.0) -> list[dict]:
     orden = sorted(pareto, key=lambda d: float(d.get("ingresos") or 0), reverse=True)
     total = sum(float(d.get("ingresos") or 0) for d in orden) or 1.0
     acc = 0.0
@@ -121,7 +123,8 @@ def abc_classes(pareto: list[dict]) -> list[dict]:
     for d in orden:
         acc += float(d.get("ingresos") or 0)
         pct = acc / total * 100.0
-        clase = "A" if len(orden) == 1 or pct <= 80 else ("B" if pct <= 95 else "C")
+        clase = "A" if len(orden) == 1 or pct <= corte_a else (
+            "B" if pct <= corte_b else "C")
         out.append({"nombre": d.get("nombre", ""), "ingresos": float(d.get("ingresos") or 0),
                     "acum_pct": pct, "clase": clase})
     return out
@@ -134,7 +137,6 @@ def abc_classes(pareto: list[dict]) -> list[dict]:
 # pasos diarios con etiqueta de dias reales. Con 28+ dias se suma
 # indice por dia de semana. Backtest rolling-origin contra ingenuo
 # y media movil 7: si el modelo no gana, es preliminar.
-import datetime as _dt
 
 MESES_CORTO = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
                "jul": 7, "ago": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dic": 12}
@@ -179,7 +181,6 @@ def dow_factors(fechas: list[_dt.date], valores: list[float]) -> dict[int, float
         return {}
     nivel, pend = fit_trend(fechas, valores)
     xs = [float(f.toordinal()) for f in fechas]
-    x0 = xs[0]
     a = nivel - pend * xs[-1]
     por_dia: dict[int, list[float]] = {}
     for f, y in zip(fechas, valores):
@@ -213,7 +214,7 @@ def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30,
 def backtest(fechas: list[_dt.date], valores: list[float], min_origen: int = 7) -> dict:
     # rolling-origin a 1 paso: modelo vs ingenuo (ultimo) vs media movil 7
     pares = sorted(zip(fechas, valores), key=lambda p: p[0])
-    errs = {"modelo": [], "naive": [], "ma7": []}
+    errs: dict[str, list[float]] = {"modelo": [], "naive": [], "ma7": []}
     for k in range(min(min_origen, len(pares) - 1), len(pares)):
         tramo = pares[:k]
         real = float(pares[k][1])

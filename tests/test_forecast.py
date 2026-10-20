@@ -83,8 +83,6 @@ class TestReparto(unittest.TestCase):
                           "Naranja", "Fresa"])
 
     def test_tendencia_negativa_da_negativos(self):
-        from app.data import mock_data
-        det = mock_data.get_sales_detail()
         hist = serie_lineal(6000, 7, paso=-200)
         g = analytics.horizon_growth(4800.0, [v for _, v in analytics.forecast_daily(hist, 6)])
         self.assertLess(g, 0)

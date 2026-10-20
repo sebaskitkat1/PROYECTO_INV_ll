@@ -461,6 +461,9 @@ INSERT INTO parametros_sistema (clave, valor, descripcion) VALUES
     ('umbral_advertencia', '1.25', 'Stock < mínimo × este factor => estado advertencia'),
     ('objetivo_reorden',   '2.00', 'Cantidad sugerida = mínimo × este factor − stock actual'),
     ('alerta_caducidad_dias', '7', 'Lotes que caducan dentro de estos días salen en la alerta'),
+    ('dias_alerta_agotar', '5', 'Días de cobertura que resaltan la fila en inventario'),
+    ('abc_corte_a', '80', 'Pareto: acumulado hasta este % es clase A'),
+    ('abc_corte_b', '95', 'Pareto: acumulado hasta este % es clase B'),
     ('factor_calor_35', '0.60', 'Vida útil sin refrigeración si el mes pega 35 °C o más'),
     ('factor_calor_30', '0.80', 'Vida útil sin refrigeración si el mes pega 30 °C o más');
 
@@ -790,23 +793,34 @@ LEFT JOIN (
     GROUP BY v.id_sucursal, r.id_ingrediente
 ) c ON c.id_sucursal = inv.id_sucursal AND c.id_ingrediente = inv.id_ingrediente;
 
+-- Sugerido neto: descuenta lo pendiente de órdenes en borrador/enviada
 CREATE OR REPLACE VIEW v_orden_compra_sugerida AS
 SELECT e.id_sucursal, e.id_ingrediente, e.nombre, e.unidad,
        e.stock_actual, e.stock_minimo, e.estado,
-       GREATEST(0, CEIL(e.stock_minimo * prm.objetivo - e.stock_actual)) AS sugerido,
+       GREATEST(0, CEIL(e.stock_minimo * prm.objetivo - e.stock_actual
+                        - COALESCE(pend.pendiente, 0))) AS sugerido,
        ip.id_proveedor, p.nombre AS proveedor, ip.precio_compra,
-       GREATEST(0, CEIL(e.stock_minimo * prm.objetivo - e.stock_actual)) * ip.precio_compra AS costo_estimado
+       GREATEST(0, CEIL(e.stock_minimo * prm.objetivo - e.stock_actual
+                        - COALESCE(pend.pendiente, 0))) * ip.precio_compra AS costo_estimado
 FROM v_estado_inventario e
 CROSS JOIN (SELECT CAST(valor AS DECIMAL(6,2)) AS objetivo
             FROM parametros_sistema WHERE clave = 'objetivo_reorden') prm
+LEFT JOIN (
+    SELECT o.id_sucursal, d.id_ingrediente,
+           SUM(GREATEST(0, d.cantidad_solicitada - COALESCE(d.cantidad_recibida, 0))) AS pendiente
+      FROM detalle_ordenes_compra d
+      JOIN ordenes_compra o ON o.id_orden = d.id_orden
+     WHERE o.estado IN ('borrador', 'enviada')
+     GROUP BY o.id_sucursal, d.id_ingrediente
+) pend ON pend.id_sucursal = e.id_sucursal AND pend.id_ingrediente = e.id_ingrediente
 LEFT JOIN ingrediente_proveedor ip ON ip.id_ingrediente = e.id_ingrediente AND ip.es_principal = 1
 LEFT JOIN proveedores p            ON p.id_proveedor = ip.id_proveedor
 WHERE e.estado IN ('critico', 'advertencia');
 
 CREATE OR REPLACE VIEW v_pareto_abc AS
 SELECT t.id_producto, t.nombre, t.ingresos, t.acum_pct,
-       CASE WHEN t.acum_pct <= 80 THEN 'A'
-            WHEN t.acum_pct <= 95 THEN 'B'
+       CASE WHEN t.acum_pct <= COALESCE(prm.corte_a, 80) THEN 'A'
+            WHEN t.acum_pct <= COALESCE(prm.corte_b, 95) THEN 'B'
             ELSE 'C' END AS clase
 FROM (
     SELECT p.id_producto, p.nombre,
@@ -817,7 +831,12 @@ FROM (
     JOIN ventas v    ON v.id_venta = d.id_venta AND v.estado = 'completada'
     JOIN productos p ON p.id_producto = d.id_producto
     GROUP BY p.id_producto, p.nombre
-) t;
+) t
+CROSS JOIN (
+    SELECT CAST(MAX(CASE WHEN clave = 'abc_corte_a' THEN valor END) AS DECIMAL(6,2)) AS corte_a,
+           CAST(MAX(CASE WHEN clave = 'abc_corte_b' THEN valor END) AS DECIMAL(6,2)) AS corte_b
+    FROM parametros_sistema
+) prm;
 
 CREATE OR REPLACE VIEW v_costo_receta AS
 SELECT p.id_producto, p.nombre, p.precio_venta, p.costo_unitario AS costo_estandar,
