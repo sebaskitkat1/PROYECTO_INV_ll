@@ -25,8 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, mock_data, repository
-from app.data import export_csv, store
+from app.data import analytics, export_csv, mock_data, repository, roles, store
 from app.data.app_state import AppState
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
@@ -106,6 +105,8 @@ class InventoryScreen(QWidget):
 
         # lista compartida: lo editado sigue ahi al volver
         self.inventory: list[dict] = store.get_inventory()
+        self.params = repository.system_params()
+        self.can_buy = roles.puede_comprar(roles.rol_ui(AppState.user_role))
 
         self.alert_banner, self.alert_label = self._build_alert_banner()
         content_layout.addWidget(self.alert_banner)
@@ -145,7 +146,7 @@ class InventoryScreen(QWidget):
         except DBError:
             self.expiry_banner.setVisible(False)
             return
-        vencidos = [l for l in lotes if l["estado"] == "vencido"]
+        vencidos = [lote for lote in lotes if lote["estado"] == "vencido"]
         if not lotes:
             self.expiry_banner.setVisible(False)
             return
@@ -216,11 +217,12 @@ class InventoryScreen(QWidget):
     def _build_actions_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(10)
-        order_btn = QPushButton("Generar orden de compra")
-        order_btn.setProperty("role", "primary")
-        order_btn.setCursor(Qt.PointingHandCursor)
-        order_btn.clicked.connect(self._export_order)
-        row.addWidget(order_btn)
+        self.order_btn = QPushButton("Generar orden de compra")
+        self.order_btn.setProperty("role", "primary")
+        self.order_btn.setCursor(Qt.PointingHandCursor)
+        self.order_btn.clicked.connect(self._export_order)
+        self.order_btn.setVisible(self.can_buy)
+        row.addWidget(self.order_btn)
         reset_btn = QPushButton("Restablecer")
         reset_btn.setProperty("role", "outline")
         reset_btn.setCursor(Qt.PointingHandCursor)
@@ -239,6 +241,25 @@ class InventoryScreen(QWidget):
         if not bajos:
             QMessageBox.information(self, "Orden de compra", "No hay productos por pedir.")
             return
+        if repository.activa():
+            respuesta = QMessageBox.question(
+                self, "Orden de compra", "¿Generar las órdenes en la base?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if respuesta != QMessageBox.Yes:
+                return
+            try:
+                n = repository.generate_purchase_orders(AppState.user_id)
+            except DBError:
+                QMessageBox.warning(self, "Orden de compra", "Sin conexión a la base.")
+                return
+            except Exception as e:
+                QMessageBox.warning(self, "Orden de compra", str(e))
+                return
+            QMessageBox.information(
+                self, "Orden de compra",
+                f"Se generaron {n} órdenes. Revísalas en Compras." if n
+                else "No hay productos por pedir.")
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Guardar orden de compra", "orden_compra.csv", "CSV (*.csv)")
         if not path:
             return
@@ -246,7 +267,7 @@ class InventoryScreen(QWidget):
         filas = []
         for r in sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]):
             fila = {k: r.get(k, "") for k in ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado"]}
-            fila["sugerido"] = analytics.reorder_qty(r)
+            fila["sugerido"] = analytics.reorder_qty(r, self.params["objetivo_reorden"])
             filas.append(fila)
         try:
             n = export_csv.guardar_csv(
@@ -304,7 +325,7 @@ class InventoryScreen(QWidget):
             else:
                 dias_item = NumericItem(self._fmt_dias(float(dias), row.get("unidad")), float(dias))
             dias_item.setFlags(dias_item.flags() & ~Qt.ItemIsEditable)
-            if dias is not None and dias <= 5:
+            if dias is not None and dias <= self.params["dias_alerta_agotar"]:
                 dias_item.setForeground(QColor(styles.DANGER))
                 font = dias_item.font()
                 font.setBold(True)
@@ -374,7 +395,9 @@ class InventoryScreen(QWidget):
             inv["stockActual"] = nuevo
         else:
             inv["stockMinimo"] = nuevo
-        estado, dias = analytics.stock_status(inv["stockActual"], inv["stockMinimo"], inv.get("consumoDiario"))
+        estado, dias = analytics.stock_status(
+            inv["stockActual"], inv["stockMinimo"], inv.get("consumoDiario"),
+            self.params["umbral_advertencia"])
         inv["estado"], inv["diasAgotar"] = estado, dias
         self._reload_table()
         self._refresh_summary_and_alert()
@@ -431,8 +454,13 @@ class InventoryScreen(QWidget):
     def _pareto_chart_card(self) -> QFrame:
         card = self._chart_card("Qué deja más")
         canvas = MplCanvas(height=2.6)
-        # clases ABC calculadas, no a mano
-        data = analytics.abc_classes(mock_data.get_pareto_data())
+        # clases ABC calculadas, no a mano; umbrales de parametros_sistema
+        try:
+            pareto = repository.pareto_data()
+        except DBError:
+            pareto = mock_data.get_pareto_data()
+        data = analytics.abc_classes(pareto, self.params["abc_corte_a"],
+                                     self.params["abc_corte_b"])
         names = [d["nombre"] for d in data]
         values = [d["ingresos"] for d in data]
         cum_pct = [d["acum_pct"] for d in data]

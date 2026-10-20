@@ -3,7 +3,6 @@
 Uso desde la raiz del repo:  python scripts/simulacion/run_simulacion.py
 Guarda graficas en scripts/simulacion/resultados/.
 """
-import datetime as dt
 import os
 import sys
 
@@ -12,11 +11,11 @@ sys.path.insert(0, ROOT)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from app.data import db
-from app.data import analytics
+from app.data import analytics, db
 from scripts.simulacion import sim_lib
 
 SALIDA = os.path.join(ROOT, "scripts", "simulacion", "resultados")

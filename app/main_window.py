@@ -3,11 +3,14 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
 
+from app.data import roles
 from app.data.app_state import AppState
+from app.screens.bitacora_screen import BitacoraScreen
 from app.screens.dashboard_screen import DashboardScreen
 from app.screens.inventory_screen import InventoryScreen
 from app.screens.login_screen import LoginScreen
 from app.screens.prediction_screen import PredictionScreen
+from app.screens.purchases_screen import PurchasesScreen
 from app.screens.sales_screen import SalesScreen
 
 
@@ -27,7 +30,9 @@ class MainWindow(QMainWindow):
         # de la base sin reiniciar la app.
         self.screens: dict[str, object] = {}
         # login tambien se reconstruye: asi vuelve limpio, sin texto anterior
-        self._REBUILD_ON_NAVIGATE = {"login", "dashboard", "sales", "inventory", "prediction"}
+        self._REBUILD_ON_NAVIGATE = {
+            "login", "dashboard", "sales", "inventory", "compras", "prediction", "bitacora"
+        }
 
         self._build_login_screen()
         self.navigate("login")
@@ -50,9 +55,17 @@ class MainWindow(QMainWindow):
         screen = InventoryScreen(on_navigate=self.navigate, on_logout=self.logout)
         self._register("inventory", screen)
 
+    def _build_purchases_screen(self) -> None:
+        screen = PurchasesScreen(on_navigate=self.navigate, on_logout=self.logout)
+        self._register("compras", screen)
+
     def _build_prediction_screen(self) -> None:
         screen = PredictionScreen(on_navigate=self.navigate, on_logout=self.logout)
         self._register("prediction", screen)
+
+    def _build_bitacora_screen(self) -> None:
+        screen = BitacoraScreen(on_navigate=self.navigate, on_logout=self.logout)
+        self._register("bitacora", screen)
 
     def _register(self, key: str, widget) -> None:
         if key in self.screens:
@@ -70,12 +83,16 @@ class MainWindow(QMainWindow):
             "dashboard": self._build_dashboard_screen,
             "sales": self._build_sales_screen,
             "inventory": self._build_inventory_screen,
+            "compras": self._build_purchases_screen,
             "prediction": self._build_prediction_screen,
+            "bitacora": self._build_bitacora_screen,
         }
         if screen_name not in builders:
             raise ValueError(f"pantalla desconocida: {screen_name}")
         if screen_name != "login" and not AppState.user_email:
             screen_name = "login"
+        elif not roles.puede_ver(roles.rol_ui(AppState.user_role), screen_name):
+            screen_name = "dashboard"
         needs_build = screen_name not in self.screens or screen_name in self._REBUILD_ON_NAVIGATE
         if needs_build:
             builders[screen_name]()

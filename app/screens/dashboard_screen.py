@@ -4,7 +4,6 @@ from __future__ import annotations
 import datetime
 from typing import Callable
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app import styles

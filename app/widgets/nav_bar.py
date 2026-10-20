@@ -6,11 +6,17 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from app import styles
+from app.data import roles
+from app.data.app_state import AppState
+
 NAV_ITEMS = [
     ("dashboard", "Inicio"),
     ("sales", "Ventas"),
     ("inventory", "Inventario"),
+    ("compras", "Compras"),
     ("prediction", "Predicción"),
+    ("bitacora", "Bitácora"),
 ]
 
 
@@ -23,11 +29,13 @@ class NavBar(QFrame):
         on_navigate: Callable[[str], None],
         on_logout: Callable[[], None],
         on_back: Optional[Callable[[], None]] = None,
+        role: Optional[str] = None,
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
         self.setProperty("role", "topbar")
         self.setFixedHeight(60)
+        self.role = role if role is not None else AppState.user_role
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(20, 0, 20, 0)
@@ -73,12 +81,21 @@ class NavBar(QFrame):
         seg_layout.setContentsMargins(4, 4, 4, 4)
         seg_layout.setSpacing(2)
         for screen_key, label in NAV_ITEMS:
+            if not roles.puede_ver(roles.rol_ui(self.role), screen_key):
+                continue
             btn = QPushButton(label)
             btn.setProperty("role", "navActive" if screen_key == active_screen else "nav")
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked=False, s=screen_key: on_navigate(s))
             seg_layout.addWidget(btn)
         outer.addWidget(seg)
+
+        self.role_label = QLabel(roles.rol_ui(self.role))
+        self.role_label.setStyleSheet(
+            f"background-color: {styles.SAGE_BG}; color: {styles.SAGE};"
+            "font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 10px;"
+        )
+        outer.addWidget(self.role_label)
 
         logout_btn = QPushButton("Salir")
         logout_btn.setProperty("role", "ghost")

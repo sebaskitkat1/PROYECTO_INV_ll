@@ -9,12 +9,10 @@ Supuestos (declarados, no escondidos):
 """
 from __future__ import annotations
 
-import datetime as dt
 import random
 import statistics
 
 from app.data import analytics
-
 
 # -- walk-forward semanal ------------------------------------------------
 

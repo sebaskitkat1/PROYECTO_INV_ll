@@ -71,6 +71,49 @@ def get_pareto_data() -> list[dict]:
     ]
 
 
+def get_purchase_orders() -> list[dict]:
+    return [
+        {"id_orden": 1048, "proveedor": "Central de Abastos de Torreón",
+         "fecha": "2026-10-19 08:40", "estado": "borrador", "total": 723.70},
+        {"id_orden": 1047, "proveedor": "Huerta Los Nogales",
+         "fecha": "2026-10-18 07:55", "estado": "enviada", "total": 300.00},
+        {"id_orden": 1046, "proveedor": "Central de Abastos de Torreón",
+         "fecha": "2026-10-16 09:10", "estado": "recibida", "total": 498.30},
+    ]
+
+
+def get_purchase_order_detail(id_orden: int | None = None) -> list[dict]:
+    detalles = {
+        1048: [
+            {"nombre": "Fresa", "unidad": "kg", "cantidad": 10, "recibido": None,
+             "precio": 23.45, "importe": 234.50},
+            {"nombre": "Naranja", "unidad": "kg", "cantidad": 30, "recibido": None,
+             "precio": 5.88, "importe": 176.40},
+            {"nombre": "Jitomate", "unidad": "kg", "cantidad": 15, "recibido": None,
+             "precio": 7.20, "importe": 108.00},
+            {"nombre": "Uva", "unidad": "kg", "cantidad": 10, "recibido": None,
+             "precio": 20.48, "importe": 204.80},
+        ],
+        1047: [
+            {"nombre": "Papaya", "unidad": "kg", "cantidad": 12, "recibido": None,
+             "precio": 11.00, "importe": 132.00},
+            {"nombre": "Sandía", "unidad": "pzas", "cantidad": 5, "recibido": None,
+             "precio": 33.60, "importe": 168.00},
+        ],
+        1046: [
+            {"nombre": "Manzana", "unidad": "kg", "cantidad": 20, "recibido": 20,
+             "precio": 9.90, "importe": 198.00},
+            {"nombre": "Plátano", "unidad": "kg", "cantidad": 30, "recibido": 30,
+             "precio": 5.76, "importe": 172.80},
+            {"nombre": "Piña", "unidad": "pzas", "cantidad": 10, "recibido": 10,
+             "precio": 12.75, "importe": 127.50},
+        ],
+    }
+    if id_orden is None:
+        return [dict(fila) for filas in detalles.values() for fila in filas]
+    return [dict(fila) for fila in detalles.get(int(id_orden), [])]
+
+
 def get_prediction_data() -> list[dict]:
     # serie ordenada cronologicamente: 6 dias historicos + Hoy (pivote)
     # + 6 dias de pronostico. Sin espacios/duplicados en etiquetas.

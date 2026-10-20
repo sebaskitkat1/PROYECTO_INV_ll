@@ -51,7 +51,8 @@ class TestExport(unittest.TestCase):
             [{"nombre": "Mango", "nota": "=1+1"},
              {"nombre": "Fresa", "nota": "ok"}])
         self.assertEqual(n, 2)
-        crudo = open(ruta, "rb").read()
+        with open(ruta, "rb") as archivo:
+            crudo = archivo.read()
         self.assertTrue(crudo.startswith(b"\xef\xbb\xbf"))
         texto = crudo.decode("utf-8-sig")
         self.assertIn("'=1+1", texto)
