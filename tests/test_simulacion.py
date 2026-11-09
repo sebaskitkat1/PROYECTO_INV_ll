@@ -46,7 +46,9 @@ class TestPoliticas(unittest.TestCase):
     def test_base_usa_semana_pasada(self):
         fechas = [dt.date(2026, 9, 1) + dt.timedelta(days=i) for i in range(10)]
         vals = [float(i) for i in range(10)]
-        self.assertEqual(sim_lib.pedido_base(fechas, vals), 2.0)
+        # el siguiente dia es el indice 10; su mismo dia de la semana
+        # anterior es el indice 3 (no el 2)
+        self.assertEqual(sim_lib.pedido_base(fechas, vals), 3.0)
 
     def test_modelo_deriva_solo_de_historia(self):
         from app.data import analytics

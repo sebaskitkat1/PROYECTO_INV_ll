@@ -16,6 +16,7 @@ from app.widgets.nav_bar import NavBar
 
 class TestPermisos(unittest.TestCase):
     def test_cajero_sin_pronostico_ni_bitacora(self):
+        self.assertTrue(roles.puede_ver(roles.ROL_CAJERO, "pos"))
         self.assertTrue(roles.puede_ver(roles.ROL_CAJERO, "sales"))
         self.assertTrue(roles.puede_ver(roles.ROL_CAJERO, "inventory"))
         self.assertFalse(roles.puede_ver(roles.ROL_CAJERO, "prediction"))
@@ -54,6 +55,7 @@ class TestNavBar(unittest.TestCase):
     def test_cajero_sin_prediccion_ni_bitacora(self):
         nav = self._nav(roles.ROL_CAJERO)
         botones = self._botones(nav)
+        self.assertIn("Caja", botones)
         self.assertIn("Inventario", botones)
         self.assertNotIn("Compras", botones)
         self.assertNotIn("Predicción", botones)
@@ -63,6 +65,7 @@ class TestNavBar(unittest.TestCase):
     def test_admin_ve_todo(self):
         nav = self._nav(roles.ROL_ADMIN)
         botones = self._botones(nav)
+        self.assertIn("Caja", botones)
         self.assertIn("Compras", botones)
         self.assertIn("Predicción", botones)
         self.assertIn("Bitácora", botones)
@@ -97,6 +100,13 @@ class TestPantallasPorRol(unittest.TestCase):
         s = BitacoraScreen(on_navigate=lambda _x: None, on_logout=lambda: None)
         self.assertEqual(s.table.rowCount(), 0)
         self.assertIn("sin conexión", s.status_label.text())
+
+    def test_cajero_navega_a_caja(self):
+        from app.main_window import MainWindow
+        AppState.set_user("caja@frutidata.local", role=roles.ROL_CAJERO)
+        w = MainWindow()
+        w.navigate("pos")
+        self.assertIs(w.stack.currentWidget(), w.screens["pos"])
 
     def test_navegacion_bloqueada_para_cajero(self):
         from app.main_window import MainWindow

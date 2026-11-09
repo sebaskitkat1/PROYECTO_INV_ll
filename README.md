@@ -9,6 +9,7 @@ los números salen de los datos, no hay cifras escritas a mano.
 Requiere Python 3.10+.
 
 ```powershell
+# desde la carpeta del proyecto
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
@@ -17,13 +18,14 @@ pip install -r requirements.txt
 ## Ejecución
 
 ```powershell
+# desde la carpeta del proyecto
 python main.py
 ```
 
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 67 pruebas
+python -m unittest discover tests   # 91 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -36,18 +38,30 @@ mismo en `.github/workflows/ci.yml`.
 ```powershell
 pip install -r requirements-dev.txt
 .\scripts\build.ps1
-# queda en dist\cosecha\cosecha.exe
+# portable: dist\cosecha\cosecha.exe
+.\scripts\build_installer.ps1 -Version 1.0.0
+# instalador: dist\installer\Cosecha-Setup-1.0.0.exe
 ```
-Copia tu `.env` junto al `.exe` (la app lo busca ahí primero). El build
-usa `cosecha.spec` y `main.py` como entrada.
+
+El instalador requiere Inno Setup 6
+(`winget install --id JRSoftware.InnoSetup -e`). Instala por usuario en
+`%LOCALAPPDATA%\Programs\Cosecha` sin pedir administrador, incluye el
+schema y crea `.env` desde `.env.example` la primera vez. El portable
+necesita que copies tu `.env` junto al `.exe` (la app lo busca ahí primero).
+El build usa `cosecha.spec` y `main.py` como entrada.
 
 ## Base de datos
 
 ```powershell
 # 1. Cargar el schema (la base con datos se llama frutidata)
 mysql -u root -p < db/frutidata_schema.sql
-#    Si la base ya existe, aplicar solo la migración de compras:
+#    Si la base ya existe, aplicar las migraciones sin borrar datos:
 mysql -u root -p < db/migrate_ordenes_pendientes.sql
+mysql -u root -p < db/migrate_catalogo_pos.sql
+mysql -u root -p < db/migrate_fix_totales_ventas.sql
+mysql -u root -p < db/migrate_cantidades_decimales.sql
+mysql -u root -p < db/migrate_inventario_recetas.sql
+mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 # 2. Copiar .env.example como .env y poner tus valores (nunca se sube)
 # 3. Datos de prueba:  CALL sp_generar_ventas_demo(60);
 # 4. Dar de alta tu contraseña:
@@ -59,7 +73,7 @@ Los umbrales de inventario (advertencia, reorden, caducidad, días de
 alerta y cortes ABC) se leen de `parametros_sistema`; sin base se usan
 los mismos valores por defecto. Los roles salen de `roles`:
 Administrador ve todo y consulta la bitácora; Gerente no ve bitácora;
-Cajero no ve pronóstico ni compras.
+Cajero registra ventas en Caja y no ve pronóstico ni compras.
 
 Sin MySQL a la mano la app abre igual con el ejemplo. El status de
 Ventas indica la fuente ("base de datos" o "ejemplo"). Ver
@@ -69,10 +83,15 @@ Ventas indica la fuente ("base de datos" o "ejemplo"). Ver
 
 ```powershell
 python scripts/simulacion/run_simulacion.py   # tabla + resultados/utilidad_acumulada.png
+python scripts/simulacion/run_producto.py --producto "Jugo Verde" --dias 21
+# -> resultados/jugo_verde_21d.png + .csv
 ```
 Walk-forward semanal, políticas de pedido (ojo del dueño vs pronóstico +
 newsvendor), inventario FIFO con caducidad real y Monte Carlo con ruido
-por día de semana. Detalles y supuestos en `scripts/simulacion/README.md`.
+por día de semana. El segundo comando hace la comparación de un solo
+producto en una temporada corta: utilidad, merma y venta perdida, con la
+misma demanda real para las dos políticas. Detalles y supuestos en
+`scripts/simulacion/README.md`.
 
 ## Estructura
 
@@ -95,29 +114,49 @@ app/
     kpi_card.py           KPI minimalista con píldora de cambio
     nav_bar.py            Topbar 60px + nav segmentada
     mpl_canvas.py         Canvas matplotlib tono papel + formato $ miles
+    chart_card.py         Tarjeta de gráfica con vista previa y ventana ampliada
     table_items.py        Items que ordenan por valor, no por texto
   screens/
     login_screen.py       Acceso contra usuarios (bcrypt) o modo ejemplo
-    dashboard_screen.py   Hoy, KPIs y 2 gráficas
-    sales_screen.py       Filtro por categoría, buscador, tabla y dispersión
+    dashboard_screen.py   Hoy, KPIs y 3 gráficas con vista previa ampliable
+    pos_screen.py         Caja: catálogo, ticket y registro de venta
+    sales_screen.py       Filtro por categoría, buscador, tabla e ingresos por categoría
     inventory_screen.py   Stock editable, alertas, caducidad y ABC real
     purchases_screen.py   Órdenes de compra, detalle y recepción
-    prediction_screen.py  Histórico vs pronóstico 30 días
+    prediction_screen.py  Histórico vs pronóstico 30 días y guardado
     bitacora_screen.py    Accesos consultables (solo Administrador)
 db/
   frutidata_schema.sql    Schema MySQL validado (tablas, vistas, triggers, SP)
   migrate_ordenes_pendientes.sql  Vista de compras sin pedidos duplicados
+  migrate_catalogo_pos.sql        Catálogo de 66 productos para la caja
+  migrate_fix_totales_ventas.sql  Trigger y totales históricos corregidos
+  migrate_cantidades_decimales.sql Cantidades decimales (kg/L) en detalle_ventas
+  migrate_inventario_recetas.sql  Recetas, inventario y proveedor para los 66 productos
+  migrate_kpi_precio_unidad.sql   KPI de precio promedio por unidad corregido
+  diagrama_er.*           Diagrama entidad-relación (general y por módulo)
   README_datos.md         Mapeo vista↔pantalla y contratos
 scripts/
   build.ps1               Empaquetado con PyInstaller (cosecha.spec)
-  simulacion/             Walk-forward, newsvendor, FIFO y Monte Carlo + README
+  build_installer.ps1     Instalador Inno Setup por usuario
+  cajero_diario.py        Cajero automático: ventas, órdenes y reabasto
+  al_encender.ps1         Ejecuta el cajero al iniciar sesión (opcional)
+  registrar_al_encender.ps1  Registra la tarea de inicio de sesión
+  registrar_tarea.ps1     Registra el cajero diario a una hora fija
+  run_cajero_diario.bat   Lanzador del cajero diario
+  simulacion/             Walk-forward, newsvendor, FIFO, Monte Carlo y reporte por producto
+installer/
+  cosecha.iss             Definicion del instalador Windows
+  LEEME_INSTALACION.txt   Pasos de base de datos y respaldo
 tests/
   test_inventory_table.py Tabla sin corrupción ni cruces (F01)
   test_stock_status.py    Reglas de estado y mock alineado (F05)
   test_forecast.py        Pronóstico, backtest y reparto (F02/F06)
+  test_forecast_persist.py Guardado transaccional en pronosticos*
   test_repository.py      Mapeo, fallback y auth (rechazo + bitácora)
   test_roles.py           Permisos, nav filtrada, compras y bitácora
   test_orders.py          Órdenes de compra: mapeo, detalle y ejemplo
+  test_pos.py             Catálogo, carrito, validaciones y navegación de caja
+  test_charts.py          Resúmenes de gráficas y tarjeta con vista ampliada
   test_params.py          Umbrales desde parametros_sistema y defaults
   test_simulacion.py      FIFO, políticas, walk-forward y newsvendor
   test_ui_fixes.py        Orden numérico, formato miles, export, caducidad
@@ -136,16 +175,26 @@ requirements-dev.txt      Dependencias de desarrollo y build
 - **Bitácora:** pantalla de accesos (fecha, usuario, correo, resultado y
   equipo) visible para Administrador, con botón para actualizar.
 - **Resumen:** KPIs calculados (ventas del último día + variación vs ayer,
-  precio por unidad, unidades totales, críticos en stock) y top 5 real.
-  Con base, el ticket es real (ventas/tickets con centavos).
-- **Ventas:** filtro por categoría (Frutas, Verduras, Jugos) + buscador,
-  tabla con orden numérico y por texto sin acentos, dispersión anotada.
+  precio por unidad, unidades totales, críticos en stock) y tres gráficas
+  en vista previa: ventas de 7 días, top de productos y cobertura de
+  inventario. Al hacer clic en cualquiera se abre en grande con todos los
+  datos y etiquetas. Con base, el precio promedio por unidad es real
+  (ventas/unidades con centavos).
+- **Caja:** catálogo de 66 productos con buscador y filtro por categoría;
+  ticket con cantidades decimales (0.5 kg, 0.25 L) o enteras (piezas),
+  total y método de pago; al cobrar inserta la venta y sus renglones en
+  `ventas`/`detalle_ventas` dentro de una transacción, releyendo precio y
+  costo de la base y validando existencias con bloqueo. Muestra el folio.
+- **Ventas:** filtro por categoría (Frutas, Verduras, Jugos, Bebidas,
+  Snacks y Abarrotes) + buscador, tabla con orden numérico y por texto sin
+  acentos, y gráfica de ingresos por categoría (legible con 66 productos).
   Exporta a CSV que Excel abre bien. El status muestra totales y fuente.
 - **Inventario:** stock editable con doble clic (decimales en kg/L, enteros
   en pzas; con base guarda en kardex), estado y cobertura recalculados con
   umbrales de `parametros_sistema`, alerta de críticos + alerta de lotes
-  por caducar con purga, orden de compra con cantidad sugerida y Pareto
-  ABC con cortes configurables. Con base, el botón genera las órdenes con
+  por caducar con purga, orden de compra con cantidad sugerida, cobertura
+  de los 10 ingredientes más urgentes y distribución ABC (A/B/C) con cortes
+  configurables. Con base, el botón genera las órdenes con
   `sp_generar_ordenes_compra`; sin conexión exporta el CSV de siempre.
 - **Compras:** lista las órdenes por estado, muestra proveedor, fecha, total
   y detalle; genera las sugeridas y recibe una orden completa con
@@ -154,12 +203,16 @@ requirements-dev.txt      Dependencias de desarrollo y build
 - **Pronóstico:** regresión sobre fecha real con nivel en el último punto,
   estacionalidad semanal con 28+ días, 30 pasos diarios, backtest contra
   ingenuo y media móvil (si no gana, se marca preliminar) y reparto por
-  participación de ingresos.
-- **Interfaz:** solo títulos, tablas, gráficas y botones. Sin textos de
-  ayuda, sin banners, sin pies de página. Roles: Administrador (todo y
-  bitácora), Gerente (sin bitácora) y Cajero (sin pronóstico ni compras).
+  participación de ingresos. Con base, el botón Guardar pronóstico registra
+  la cabecera, los 30 días y el reparto completo; sin conexión solo se ve.
+- **Interfaz:** títulos, tablas, gráficas y botones; la caja solo muestra
+  un aviso si no hay conexión. Roles: Administrador (todo y bitácora),
+  Gerente (sin bitácora) y Cajero (caja, ventas e inventario, sin
+  pronóstico ni compras).
 
 ## Lo que sigue
 
-1. Persistir pronósticos, backtest y reparto en `pronosticos*`.
-2. Instalador (MSI/Inno Setup) y firma del ejecutable.
+1. Firmar `cosecha.exe` y el instalador con un certificado de código.
+2. Respaldo/restauración de MySQL y validación de recepción de compras
+   end-to-end en un equipo destino.
+3. Impresión de ticket y corte de caja para la operación diaria.

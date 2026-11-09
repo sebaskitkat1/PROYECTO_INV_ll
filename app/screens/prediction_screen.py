@@ -8,8 +8,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
+    QPushButton,
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
@@ -19,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from app import styles
 from app.data import analytics, mock_data, repository
+from app.data.app_state import AppState
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -34,6 +38,7 @@ class PredictionScreen(QWidget):
         parent=None,
     ):
         super().__init__(parent)
+        self._online = repository.activa()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -59,6 +64,7 @@ class PredictionScreen(QWidget):
 
         content_layout.addWidget(self._build_line_chart_card())
         content_layout.addWidget(self._build_table_card())
+        content_layout.addLayout(self._build_actions_row())
         content_layout.addStretch()
 
         scroll.setWidget(content)
@@ -107,18 +113,23 @@ class PredictionScreen(QWidget):
         prediccion = [None] * (len(hist) - 1) + [hist[-1][1]] + [v for _, v in futuro] if hist else [None] * len(dias)
 
         x = list(range(len(dias)))
+        # con 120 puntos, un marcador por punto satura la linea
+        cada = max(1, len(x) // 18)
         canvas.axes.plot(
-            x, historico, color=styles.VERDE, linewidth=2.2, marker="o", markersize=4, label="Histórico"
+            x, historico, color=styles.VERDE, linewidth=2.2,
+            marker="o", markersize=4, markevery=cada, label="Histórico",
         )
         canvas.axes.plot(
             x, prediccion, color=styles.MENTA, linewidth=2, linestyle="--",
-            marker="o", markersize=4, label="Pronóstico",
+            marker="o", markersize=4, markevery=cada, label="Pronóstico",
         )
         etiquetas = [analytics.etiqueta_corta(d) for d in dias]
-        paso = 5
+        # como maximo ~10 etiquetas para que no se encimen
+        paso = max(1, len(x) // 10)
         canvas.axes.set_xticks(x[::paso])
-        canvas.axes.set_xticklabels(etiquetas[::paso], rotation=30, fontsize=7, ha="right")
+        canvas.axes.set_xticklabels(etiquetas[::paso], rotation=30, fontsize=8, ha="right")
         canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
+        canvas.axes.margins(x=0.01, y=0.12)
         canvas.axes.legend(fontsize=8, frameon=False, loc="upper left")
         canvas.redraw()
         layout.addWidget(canvas)
@@ -185,6 +196,50 @@ class PredictionScreen(QWidget):
         layout.addWidget(table)
 
         return card
+
+    def _build_actions_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(10)
+
+        self.save_btn = QPushButton("Guardar pronóstico")
+        self.save_btn.setProperty("role", "primary")
+        self.save_btn.setCursor(Qt.PointingHandCursor)
+        self.save_btn.setEnabled(self._online)
+        self.save_btn.clicked.connect(self._save_forecast)
+        row.addWidget(self.save_btn)
+
+        self.status_label = QLabel("base de datos" if self._online else "ejemplo (no se guarda)")
+        self.status_label.setProperty("role", "micro")
+        row.addStretch()
+        row.addWidget(self.status_label)
+        return row
+
+    def _save_forecast(self) -> None:
+        if not self._online:
+            return
+        hist = self._historia()
+        futuro = analytics.forecast_daily(hist, 30)
+        if not hist or not futuro:
+            QMessageBox.information(self, "Pronóstico", "No hay datos suficientes.")
+            return
+        detalle = self._detalle()
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        total_30 = sum(v for _, v in futuro)
+        productos = analytics.product_forecast_share(detalle, total_30, len(detalle))
+        try:
+            id_pronostico = repository.save_forecast(
+                hist, futuro, productos, bt, AppState.user_id)
+        except DBError:
+            self._online = False
+            self.save_btn.setEnabled(False)
+            self.status_label.setText("sin conexión")
+            QMessageBox.warning(self, "Pronóstico", "Sin conexión a la base.")
+            return
+        except Exception as e:
+            QMessageBox.warning(self, "Pronóstico", str(e))
+            return
+        self.status_label.setText(
+            f"Guardado #{id_pronostico} · {len(futuro)} días · {len(productos)} productos")
 
     @staticmethod
     def _crec_texto_color(crec: float) -> tuple[str, str]:

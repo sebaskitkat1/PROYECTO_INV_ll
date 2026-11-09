@@ -3,6 +3,7 @@
 Uso desde la raiz del repo:  python scripts/simulacion/run_simulacion.py
 Guarda graficas en scripts/simulacion/resultados/.
 """
+import datetime as dt
 import os
 import sys
 
@@ -30,8 +31,18 @@ def demanda_diaria(id_producto, dias=90):
         "WHERE v.estado = 'completada' AND d.id_producto = %s "
         "GROUP BY DATE(v.fecha_hora) ORDER BY f DESC LIMIT %s",
         (id_producto, dias))
-    filas.sort(key=lambda r: r["f"])
-    return [(r["f"], float(r["c"] or 0)) for r in filas]
+    if not filas:
+        return []
+    real: dict[dt.date, float] = {}
+    for r in filas:
+        fecha = r["f"]
+        if isinstance(fecha, dt.datetime):
+            fecha = fecha.date()
+        real[fecha] = float(r["c"] or 0)
+    # dias sin venta = demanda 0; si no, la semana pasada se desfasa
+    ini, fin = min(real), max(real)
+    return [(ini + dt.timedelta(days=i), real.get(ini + dt.timedelta(days=i), 0.0))
+            for i in range((fin - ini).days + 1)]
 
 
 def main():

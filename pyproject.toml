@@ -9,6 +9,8 @@ select = ["E", "F", "W", "I"]
 [tool.ruff.lint.per-file-ignores]
 "app/data/mock_data.py" = ["E501"]
 "scripts/simulacion/run_simulacion.py" = ["E402"]
+"scripts/simulacion/run_producto.py" = ["E402"]
+"scripts/cajero_diario.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.10"

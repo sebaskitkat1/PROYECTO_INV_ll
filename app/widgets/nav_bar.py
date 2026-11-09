@@ -12,6 +12,7 @@ from app.data.app_state import AppState
 
 NAV_ITEMS = [
     ("dashboard", "Inicio"),
+    ("pos", "Caja"),
     ("sales", "Ventas"),
     ("inventory", "Inventario"),
     ("compras", "Compras"),

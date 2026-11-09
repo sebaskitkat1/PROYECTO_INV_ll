@@ -20,11 +20,19 @@ def fmt_money(v: float) -> str:
     return f"${v:,.0f}"
 
 
+def fmt_qty(v: float) -> str:
+    """Cantidad legible: enteros sin decimales, kilos/litros con hasta 3."""
+    numero = float(v or 0)
+    if abs(numero - round(numero)) < 1e-9:
+        return f"{int(round(numero)):,}"
+    return f"{numero:,.3f}".rstrip("0").rstrip(".")
+
+
 # -- ventas --------------------------------------------------------------
 
 def sales_totals(detail: list[dict]) -> dict:
     ingresos = sum(float(d.get("ingresos") or 0) for d in detail)
-    unidades = sum(int(d.get("cantidad") or 0) for d in detail)
+    unidades = sum(float(d.get("cantidad") or 0) for d in detail)
     ticket = ingresos / unidades if unidades else 0.0
     margen_pond = 0.0
     if ingresos:
@@ -35,6 +43,18 @@ def sales_totals(detail: list[dict]) -> dict:
 def top_products(detail: list[dict], n: int = 5) -> list[dict]:
     orden = sorted(detail, key=lambda d: float(d.get("ingresos") or 0), reverse=True)
     return [{"product": d["nombre"], "ingresos": float(d.get("ingresos") or 0)} for d in orden[:n]]
+
+
+def revenue_by_category(detail: list[dict]) -> list[dict]:
+    """Ingresos por categoria, de menor a mayor (listo para barh)."""
+    acumulado: dict[str, float] = {}
+    for d in detail:
+        categoria = str(d.get("categoria") or "Sin categoría")
+        acumulado[categoria] = acumulado.get(categoria, 0.0) + float(d.get("ingresos") or 0)
+    return [
+        {"categoria": categoria, "ingresos": ingresos}
+        for categoria, ingresos in sorted(acumulado.items(), key=lambda kv: kv[1])
+    ]
 
 
 def trend_counts(detail: list[dict]) -> dict:
@@ -56,7 +76,7 @@ def dashboard_kpis(detail: list[dict], last_7: list[dict], inventory: list[dict]
             "positivo": (var or 0) >= 0,
         },
         "ticket_promedio": {"valor": fmt_money(tot["ticket"]), "delta": None, "positivo": True},
-        "productos_vendidos": {"valor": f"{tot['unidades']:,}", "delta": None, "positivo": True},
+        "productos_vendidos": {"valor": fmt_qty(tot["unidades"]), "delta": None, "positivo": True},
         "stock_en_riesgo": {"valor": str(criticos), "delta": None, "positivo": None},
     }
 
@@ -92,7 +112,7 @@ def inventory_health(items: list[dict]) -> dict:
     crit = [i for i in items if i.get("estado") == "critico"]
     adv = sum(1 for i in items if i.get("estado") == "advertencia")
     opt = sum(1 for i in items if i.get("estado") == "optimo")
-    crit_orden = sorted(crit, key=lambda i: int(i.get("diasAgotar") or 0))
+    crit_orden = sorted(crit, key=lambda i: float(i.get("diasAgotar") or 0))
     return {
         "total": total,
         "optimo": opt,
@@ -128,6 +148,24 @@ def abc_classes(pareto: list[dict], corte_a: float = 80.0,
         out.append({"nombre": d.get("nombre", ""), "ingresos": float(d.get("ingresos") or 0),
                     "acum_pct": pct, "clase": clase})
     return out
+
+
+def abc_summary(clases: list[dict]) -> list[dict]:
+    """Participacion de ingresos y productos por clase A/B/C."""
+    total_ingresos = sum(float(d.get("ingresos") or 0) for d in clases) or 1.0
+    total_productos = len(clases) or 1
+    resumen = []
+    for clase in ("A", "B", "C"):
+        filas = [d for d in clases if d.get("clase") == clase]
+        ingresos = sum(float(d.get("ingresos") or 0) for d in filas)
+        resumen.append({
+            "clase": clase,
+            "productos": len(filas),
+            "ingresos": ingresos,
+            "pct_ingresos": ingresos / total_ingresos * 100.0,
+            "pct_productos": len(filas) / total_productos * 100.0,
+        })
+    return resumen
 
 
 # -- pronostico ----------------------------------------------------------

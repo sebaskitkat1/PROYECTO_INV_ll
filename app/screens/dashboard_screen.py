@@ -4,12 +4,13 @@ from __future__ import annotations
 import datetime
 from typing import Callable
 
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app import styles
 from app.data import analytics, mock_data, repository
 from app.data.db import DBError
 from app.data.store import get_inventory
+from app.widgets.chart_card import PreviewChartCard
 from app.widgets.kpi_card import KpiCard
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -103,66 +104,159 @@ class DashboardScreen(QWidget):
         return grid
 
     def _build_charts_row(self) -> QHBoxLayout:
+        try:
+            sales_7 = repository.sales_last_7_days()
+        except DBError:
+            sales_7 = mock_data.get_sales_last_7_days()
+        try:
+            detalle = repository.sales_detail()
+        except DBError:
+            detalle = mock_data.get_sales_detail()
+        try:
+            inventario = repository.inventory_rows()
+        except DBError:
+            inventario = get_inventory()
+
         row = QHBoxLayout()
         row.setSpacing(16)
-        row.addWidget(self._sales_line_chart_card())
-        row.addWidget(self._top_products_bar_chart_card())
+        row.addWidget(self._sales_line_chart_card(sales_7), 1)
+        row.addWidget(self._top_products_chart_card(detalle), 1)
+        row.addWidget(self._coverage_chart_card(inventario), 1)
         return row
 
-    def _sales_line_chart_card(self) -> QFrame:
-        card = self._chart_card("Ventas, últimos 7 días")
-        canvas = MplCanvas(height=2.6)
-        try:
-            data = repository.sales_last_7_days()
-        except DBError:
-            data = mock_data.get_sales_last_7_days()
-        days = [d["day"] for d in data]
-        values = [d["ventas"] for d in data]
-
-        canvas.axes.plot(days, values, color=styles.VERDE, linewidth=2.2, marker="o", markersize=4,
-                         markerfacecolor=styles.MENTA, markeredgecolor=styles.VERDE)
-        canvas.axes.set_ylabel("")
-        canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
-        canvas.redraw()
-
-        card.layout().addWidget(canvas)
+    def _sales_line_chart_card(self, data: list[dict]) -> PreviewChartCard:
+        card = PreviewChartCard(
+            "Ventas, últimos 7 días",
+            "Ingresos diarios",
+            draw=lambda c: self._draw_sales_line(c, data, expanded=False),
+            expanded_draw=lambda c: self._draw_sales_line(c, data, expanded=True),
+            canvas_height=2.3,
+            expanded_height=5.2,
+        )
+        card.activated.connect(lambda: card.open_expanded(self))
         return card
 
-    def _top_products_bar_chart_card(self) -> QFrame:
-        card = self._chart_card("Lo más vendido")
-        canvas = MplCanvas(height=2.6)
-        # top real por ingresos, no lista fija
-        try:
-            data = analytics.top_products(repository.sales_detail(), 5)
-        except DBError:
-            data = analytics.top_products(mock_data.get_sales_detail(), 5)
-        products = [d["product"] for d in data][::-1]
-        values = [d["ingresos"] for d in data][::-1]
-        colors = [styles.LINE] * (len(values) - 1) + [styles.MENTA]
-
-        canvas.axes.barh(products, values, color=colors, height=0.55)
-        canvas.axes.xaxis.set_major_formatter(MplCanvas.miles_formatter())
-        canvas.axes.tick_params(axis="y", labelsize=8)
-        canvas.redraw()
-
-        card.layout().addWidget(canvas)
+    def _top_products_chart_card(self, detalle: list[dict]) -> PreviewChartCard:
+        total = len(detalle)
+        card = PreviewChartCard(
+            "Lo más vendido",
+            f"Top 5 de {total} productos" if total > 5 else f"{total} productos",
+            draw=lambda c: self._draw_top_products(c, detalle, expanded=False),
+            expanded_draw=lambda c: self._draw_top_products(c, detalle, expanded=True),
+            canvas_height=2.3,
+            expanded_height=5.2,
+        )
+        card.activated.connect(lambda: card.open_expanded(self))
         return card
+
+    def _coverage_chart_card(self, inventario: list[dict]) -> PreviewChartCard:
+        con_consumo = [i for i in inventario if i.get("diasAgotar") is not None]
+        total = len(con_consumo)
+        subtitle = (f"6 de {total} más urgentes" if total > 6
+                    else f"{total} ingredientes con consumo")
+        card = PreviewChartCard(
+            "Cobertura de inventario",
+            subtitle,
+            draw=lambda c: self._draw_coverage(c, inventario, expanded=False),
+            expanded_draw=lambda c: self._draw_coverage(c, inventario, expanded=True),
+            canvas_height=2.3,
+            expanded_height=max(5.2, 1.2 + 0.3 * total),
+            expanded_scrollable=total > 14,
+        )
+        card.activated.connect(lambda: card.open_expanded(self))
+        return card
+
+    # -- dibujo de graficas (vista previa y ampliada) -------------------
 
     @staticmethod
-    def _chart_card(title: str, subtitle: str = "") -> QFrame:
-        card = QFrame()
-        card.setProperty("role", "card")
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(4)
-        title_label = QLabel(title)
-        title_label.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
-        layout.addWidget(title_label)
-        if subtitle:
-            sub = QLabel(subtitle)
-            sub.setStyleSheet(f"font-size: 12px; color: {styles.MUTED};")
-            layout.addWidget(sub)
-        return card
+    def _draw_sales_line(canvas: MplCanvas, data: list[dict], expanded: bool) -> None:
+        canvas.clear()
+        ax = canvas.axes
+        days = [d["day"] for d in data]
+        values = [float(d["ventas"]) for d in data]
+        x = list(range(len(days)))
+        ax.plot(
+            x, values, color=styles.VERDE, linewidth=2.2,
+            marker="o", markersize=5 if expanded else 3.5,
+            markerfacecolor=styles.MENTA, markeredgecolor=styles.VERDE,
+        )
+        ax.set_xticks(x)
+        ax.set_xticklabels(days, fontsize=9 if expanded else 7.5)
+        ax.yaxis.set_major_formatter(MplCanvas.miles_formatter())
+        ax.margins(y=0.22 if expanded else 0.12)
+        if expanded and values:
+            for xi, valor in zip(x, values):
+                ax.annotate(
+                    analytics.fmt_money(valor), (xi, valor),
+                    textcoords="offset points", xytext=(0, 8),
+                    ha="center", fontsize=9, color=styles.MUTED,
+                )
+            promedio = sum(values) / len(values)
+            ax.axhline(promedio, color=styles.FAINT, linestyle="--", linewidth=1)
+            ax.annotate(
+                f"Promedio {analytics.fmt_money(promedio)}",
+                (x[0], promedio), textcoords="offset points", xytext=(4, 6),
+                ha="left", fontsize=9, color=styles.MUTED,
+            )
+        canvas.redraw()
+
+    @staticmethod
+    def _draw_top_products(canvas: MplCanvas, detalle: list[dict], expanded: bool) -> None:
+        canvas.clear()
+        ax = canvas.axes
+        cantidad = 15 if expanded else 5
+        data = analytics.top_products(detalle, cantidad)
+        products = [d["product"] for d in data][::-1]
+        values = [float(d["ingresos"]) for d in data][::-1]
+        colors = [styles.LINE] * (len(values) - 1) + [styles.MENTA] if values else []
+        ax.barh(products, values, color=colors, height=0.62)
+        ax.xaxis.set_major_formatter(MplCanvas.miles_formatter())
+        ax.tick_params(axis="y", labelsize=9 if expanded else 8)
+        if expanded and values:
+            tope = max(values) or 1.0
+            for y, valor in enumerate(values):
+                ax.text(
+                    valor + tope * 0.012, y, analytics.fmt_money(valor),
+                    va="center", fontsize=9, color=styles.MUTED,
+                )
+            ax.set_xlim(0, tope * 1.18)
+        canvas.redraw()
+
+    @staticmethod
+    def _draw_coverage(canvas: MplCanvas, inventario: list[dict], expanded: bool) -> None:
+        canvas.clear()
+        ax = canvas.axes
+        items = [i for i in inventario if i.get("diasAgotar") is not None]
+        # orden descendente: el de menor cobertura queda arriba en la barra
+        items.sort(key=lambda i: float(i["diasAgotar"]), reverse=True)
+        if not expanded:
+            items = items[-6:]
+        if not items:
+            ax.text(0.5, 0.5, "Sin consumo registrado", ha="center", va="center",
+                    fontsize=10, color=styles.MUTED, transform=ax.transAxes)
+            canvas.redraw()
+            return
+        names = [i["nombre"].split("(")[0].strip() for i in items]
+        values = [float(i["diasAgotar"]) for i in items]
+        color_por_estado = {
+            "critico": styles.CLAY,
+            "advertencia": styles.HONEY,
+            "optimo": styles.MENTA,
+            "sin_minimo": styles.FAINT,
+        }
+        colors = [color_por_estado.get(i.get("estado"), styles.MENTA_SOFT) for i in items]
+        ax.barh(names, values, color=colors, height=0.62)
+        ax.set_xlabel("días de cobertura", fontsize=9, color=styles.MUTED)
+        ax.tick_params(axis="y", labelsize=9 if expanded else 8)
+        if expanded:
+            tope = max(values) or 1.0
+            for y, valor in enumerate(values):
+                ax.text(
+                    valor + tope * 0.012, y, analytics.fmt_qty(valor),
+                    va="center", fontsize=9, color=styles.MUTED,
+                )
+            ax.set_xlim(0, tope * 1.14)
+        canvas.redraw()
 
     @staticmethod
     def _today_label() -> str:

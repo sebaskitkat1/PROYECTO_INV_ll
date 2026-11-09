@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Diagrama entidad-relación comprimido — frutidata</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --paper:#F3F6EF; --surface:#FFFFFF; --ink:#1D2A1F; --muted:#5D7060;
+    --verde:#2C5233; --line:#DCE5D6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 38px 44px 42px; background: var(--paper);
+    color: var(--ink); font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  header { max-width: 1500px; margin: 0 auto 20px; }
+  h1 { margin: 0 0 7px; font-size: 30px; letter-spacing: -.02em; color: var(--verde); }
+  .sub { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 1250px; }
+  .leyenda {
+    display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px;
+    font-size: 12.5px; color: var(--muted);
+  }
+  .panel {
+    max-width: 1500px; margin: 0 auto 22px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 16px; padding: 20px 24px 24px;
+    box-shadow: 0 8px 26px rgba(29,42,31,.05);
+  }
+  .panel h2 { margin: 0 0 3px; font-size: 17px; color: var(--verde); }
+  .panel p { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .mermaid { display: flex; justify-content: center; overflow-x: auto; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .ruta {
+    max-width: 1500px; margin: 0 auto; padding: 15px 18px;
+    background: #EAF0E8; border: 1px solid var(--line); border-radius: 12px;
+    color: var(--verde); font-size: 13px; line-height: 1.5;
+  }
+  .ruta b { color: var(--ink); }
+  footer { max-width: 1500px; margin: 14px auto 0; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Diagrama entidad-relación comprimido · frutidata</h1>
+  <p class="sub">14 tablas esenciales, solo nombres y relaciones. Sin atributos, llaves ni tipos de dato.
+  Cinco módulos para explicar el flujo general y la ruta de la predicción.</p>
+  <div class="leyenda">
+    <span><b>||--o{</b> uno a muchos</span>
+    <span><b>||--|{</b> uno a uno o más</span>
+    <span>Las tablas puente resuelven los muchos-a-muchos.</span>
+  </div>
+</header>
+<main>
+  <section class="panel">
+    <h2>1. Catálogo y ventas</h2>
+    <p>Productos, sucursales, ventas y renglones de venta.</p>
+    <pre class="mermaid">
+erDiagram
+    SUCURSALES ||--o{ VENTAS : "opera"
+    VENTAS ||--|{ DETALLE_VENTAS : "contiene"
+    PRODUCTOS ||--o{ DETALLE_VENTAS : "se vende"
+    </pre>
+  </section>
+  <section class="panel">
+    <h2>2. Recetas</h2>
+    <p>Un producto vendible consume ingredientes; la receta guarda la cantidad.</p>
+    <pre class="mermaid">
+erDiagram
+    PRODUCTOS ||--o{ RECETAS : "compone"
+    INGREDIENTES ||--o{ RECETAS : "ingrediente"
+    </pre>
+  </section>
+  <section class="panel">
+    <h2>3. Inventario</h2>
+    <p>Saldo por sucursal, lotes con caducidad y kardex de movimientos.</p>
+    <pre class="mermaid">
+erDiagram
+    SUCURSALES ||--o{ INVENTARIO : "almacena"
+    INGREDIENTES ||--o{ INVENTARIO : "stock"
+    SUCURSALES ||--o{ LOTES_INVENTARIO : "lotes"
+    INGREDIENTES ||--o{ LOTES_INVENTARIO : "lote"
+    SUCURSALES ||--o{ MOVIMIENTOS_INVENTARIO : "mueve"
+    INGREDIENTES ||--o{ MOVIMIENTOS_INVENTARIO : "mueve"
+    VENTAS ||--o{ MOVIMIENTOS_INVENTARIO : "descuenta"
+    </pre>
+  </section>
+  <section class="panel">
+    <h2>4. Compras</h2>
+    <p>Cabecera de orden, detalle por ingrediente y entrada al inventario.</p>
+    <pre class="mermaid">
+erDiagram
+    SUCURSALES ||--o{ ORDENES_COMPRA : "solicita"
+    ORDENES_COMPRA ||--|{ DETALLE_ORDENES_COMPRA : "detalla"
+    INGREDIENTES ||--o{ DETALLE_ORDENES_COMPRA : "pide"
+    ORDENES_COMPRA ||--o{ MOVIMIENTOS_INVENTARIO : "ingresa"
+    </pre>
+  </section>
+  <section class="panel">
+    <h2>5. Pronóstico</h2>
+    <p>Corrida, serie diaria y detalle por producto.</p>
+    <pre class="mermaid">
+erDiagram
+    SUCURSALES ||--o{ PRONOSTICOS : "genera"
+    PRONOSTICOS ||--o{ PRONOSTICO_DIARIO : "serie diaria"
+    PRONOSTICOS ||--o{ PRONOSTICO_PRODUCTO : "detalle"
+    PRODUCTOS ||--o{ PRONOSTICO_PRODUCTO : "producto"
+    </pre>
+  </section>
+  <div class="ruta">
+    <b>Ruta de la predicción:</b> VENTAS + DETALLE_VENTAS → serie diaria de unidades →
+    PRONOSTICOS → PRONOSTICO_DIARIO / PRONOSTICO_PRODUCTO. PRODUCTOS aporta precio,
+    costo y vida de anaquel. INVENTARIO y LOTES_INVENTARIO se usan para el pedido y la caducidad.
+  </div>
+</main>
+<footer>Fuente: db/frutidata_schema.sql · Versión comprimida de db/diagrama_er.md · Sin atributos</footer>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    securityLevel: "loose",
+    themeVariables: {
+      background: "#FFFFFF",
+      primaryColor: "#EAF0E8",
+      primaryTextColor: "#1D2A1F",
+      primaryBorderColor: "#2C5233",
+      lineColor: "#5B7A5A",
+      secondaryColor: "#F7F0D9",
+      tertiaryColor: "#F8E8E2",
+      fontFamily: "Segoe UI, system-ui, sans-serif",
+      fontSize: "15px"
+    },
+    er: {
+      useMaxWidth: true,
+      diagramPadding: 18,
+      layoutDirection: "TB",
+      minEntityWidth: 150,
+      minEntityHeight: 48,
+      entityPadding: 12,
+      stroke: "gray",
+      fill: "honeydew",
+      fontSize: 14
+    }
+  });
+</script>
+</body>
+</html>

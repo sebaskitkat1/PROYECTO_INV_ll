@@ -9,6 +9,7 @@ from app.screens.bitacora_screen import BitacoraScreen
 from app.screens.dashboard_screen import DashboardScreen
 from app.screens.inventory_screen import InventoryScreen
 from app.screens.login_screen import LoginScreen
+from app.screens.pos_screen import PosScreen
 from app.screens.prediction_screen import PredictionScreen
 from app.screens.purchases_screen import PurchasesScreen
 from app.screens.sales_screen import SalesScreen
@@ -31,7 +32,8 @@ class MainWindow(QMainWindow):
         self.screens: dict[str, object] = {}
         # login tambien se reconstruye: asi vuelve limpio, sin texto anterior
         self._REBUILD_ON_NAVIGATE = {
-            "login", "dashboard", "sales", "inventory", "compras", "prediction", "bitacora"
+            "login", "dashboard", "pos", "sales", "inventory", "compras",
+            "prediction", "bitacora"
         }
 
         self._build_login_screen()
@@ -46,6 +48,10 @@ class MainWindow(QMainWindow):
     def _build_dashboard_screen(self) -> None:
         screen = DashboardScreen(on_navigate=self.navigate, on_logout=self.logout)
         self._register("dashboard", screen)
+
+    def _build_pos_screen(self) -> None:
+        screen = PosScreen(on_navigate=self.navigate, on_logout=self.logout)
+        self._register("pos", screen)
 
     def _build_sales_screen(self) -> None:
         screen = SalesScreen(on_navigate=self.navigate, on_logout=self.logout)
@@ -81,6 +87,7 @@ class MainWindow(QMainWindow):
         builders = {
             "login": self._build_login_screen,
             "dashboard": self._build_dashboard_screen,
+            "pos": self._build_pos_screen,
             "sales": self._build_sales_screen,
             "inventory": self._build_inventory_screen,
             "compras": self._build_purchases_screen,

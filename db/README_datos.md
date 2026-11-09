@@ -7,11 +7,27 @@ mysql -u root -p < db/frutidata_schema.sql
 CALL sp_generar_ventas_demo(60);   # datos de prueba, no toca inventario
 ```
 
-Para una base ya creada, actualiza solo la vista de compras sin borrar datos:
+Para una base ya creada, aplica las migraciones sin borrar datos:
 
 ```powershell
 mysql -u root -p < db/migrate_ordenes_pendientes.sql
+mysql -u root -p < db/migrate_catalogo_pos.sql
+mysql -u root -p < db/migrate_fix_totales_ventas.sql
+mysql -u root -p < db/migrate_cantidades_decimales.sql
+mysql -u root -p < db/migrate_inventario_recetas.sql
+mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 ```
+
+`migrate_catalogo_pos.sql` deja 66 productos activos en 6 categorías.
+`migrate_fix_totales_ventas.sql` corrige el trigger de totales y repara las
+cabeceras históricas de `ventas`.
+`migrate_cantidades_decimales.sql` cambia `detalle_ventas.cantidad` a
+`DECIMAL(10,3)` para vender medios kilos y litros fraccionados.
+`migrate_inventario_recetas.sql` crea un ingrediente, una receta 1:1, una
+fila de inventario y un proveedor principal para cada producto que aún no
+los tenía (los jugos conservan sus recetas detalladas).
+`migrate_kpi_precio_unidad.sql` corrige `v_kpi_dashboard` para que el KPI
+sea ingresos / unidades vendidas, no ingresos / tickets.
 
 ## Mapeo vista ↔ pantalla
 
@@ -26,8 +42,9 @@ mysql -u root -p < db/migrate_ordenes_pendientes.sql
 | `v_pareto_abc` (cortes A/B desde parámetros) | Gráfica ABC |
 | `v_lotes_por_caducar` | Alerta de caducidad |
 | `v_productos_temporada`, `v_vida_util_clima` | Compras (qué pedir según mes y calor) |
+| `ventas` + `detalle_ventas` (cabecera y renglones) | Caja (registro de venta) |
 | `ordenes_compra`, `detalle_ordenes_compra`, `proveedores` | Compras (lista y detalle) |
-| `pronosticos` + `pronostico_diario` + `pronostico_producto` | Persistir pronóstico y backtest |
+| `pronosticos` + `pronostico_diario` + `pronostico_producto` | Pronóstico (botón Guardar) |
 | `sp_generar_ordenes_compra`, `sp_recibir_orden_compra` | Compras (generar y recibir) |
 | `sp_ajustar_stock`, `sp_purgar_caducados`, `sp_registrar_merma` | Acciones de la app |
 | `bitacora_accesos`, `usuarios.password_hash` (bcrypt) | Login |
@@ -35,6 +52,13 @@ mysql -u root -p < db/migrate_ordenes_pendientes.sql
 ## Contratos que la app asume
 
 - `unidad` en `kg`/`L`/`pzas` (igual que `ENTERO_UNIDADES`).
+- `detalle_ventas.cantidad` es `DECIMAL(10,3)`: acepta 0.500 kg o 0.250 L
+  y también piezas enteras. La caja redondea a 3 decimales y rechaza
+  cantidades menores a 0.001.
+- Todo producto activo tiene al menos una receta; `register_sale` valida el
+  stock de sus ingredientes con `FOR UPDATE` antes de insertar la venta.
+- `ventas.total = subtotal - descuento`; el trigger `trg_detalle_ventas_ai`
+  mantiene ambos totales al insertar renglones.
 - `estado` incluye `sin_minimo`; `dias_agotar` puede ser NULL ("—").
 - `ordenes_compra.estado` usa `borrador`, `enviada`, `recibida` o `cancelada`;
   solo se reciben las dos primeras. `sp_recibir_orden_compra` recibe todo
