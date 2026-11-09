@@ -1,4 +1,4 @@
-"""Pantalla de analisis de ventas: filtros, tabla y dispersion ingresos/margen."""
+"""Pantalla de analisis de ventas: filtros, tabla e ingresos por categoria."""
 from __future__ import annotations
 
 from typing import Callable
@@ -29,7 +29,7 @@ from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
 from app.widgets.table_items import NumericItem, TextItem
 
-CATEGORIAS = ["Todos", "Frutas", "Verduras", "Jugos"]
+CATEGORIAS = ["Todos", "Frutas", "Verduras", "Jugos", "Bebidas", "Snacks", "Abarrotes"]
 
 # mapeo categoria para datos de ejemplo (mock no trae categoria).
 CATEGORY_MAP = {
@@ -82,8 +82,8 @@ class SalesScreen(QWidget):
         content_layout.addWidget(self._build_filter_bar())
         self.table = self._build_table()
         content_layout.addWidget(self.table)
-        self.scatter_card, self.scatter_canvas = self._build_scatter_card()
-        content_layout.addWidget(self.scatter_card)
+        self.category_card, self.category_canvas = self._build_category_card()
+        content_layout.addWidget(self.category_card)
         self.status_label = QLabel("")
         self.status_label.setProperty("role", "micro")
         content_layout.addWidget(self.status_label)
@@ -173,7 +173,7 @@ class SalesScreen(QWidget):
             return
         filtered = self._apply_filters(self.all_rows)
         self._populate_table(filtered)
-        self._update_scatter(filtered)
+        self._update_category_chart(filtered)
         # totales del filtro, no del mock fijo
         tot = analytics.sales_totals(filtered)
         self.status_label.setText(
@@ -221,7 +221,7 @@ class SalesScreen(QWidget):
             nombre_item = TextItem(row["nombre"])
             nombre_item.setFlags(nombre_item.flags() & ~Qt.ItemIsEditable)
             self.table.setItem(r, 0, nombre_item)
-            self.table.setItem(r, 1, NumericItem(f"{row['cantidad']:,}", row["cantidad"]))
+            self.table.setItem(r, 1, NumericItem(analytics.fmt_qty(row["cantidad"]), row["cantidad"]))
             self.table.setItem(r, 2, NumericItem(f"${row['ingresos']:,.2f}", row["ingresos"]))
             self.table.setItem(r, 3, NumericItem(f"{row['margen']}%", row["margen"]))
             trend_item = QTableWidgetItem("+ " if row["tendencia"] == "up" else "- ")
@@ -231,46 +231,54 @@ class SalesScreen(QWidget):
             self.table.setItem(r, 4, trend_item)
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.setMinimumHeight(min(40 * len(rows) + 40, 420) if rows else 120)
+        self.table.setMinimumHeight(min(40 * len(rows) + 40, 300) if rows else 120)
         self.table.setSortingEnabled(was_sorting)
 
-    # -- grafica de dispersion ---------------------------------------------
+    # -- grafica de ingresos por categoria ---------------------------------
 
-    def _build_scatter_card(self):
+    def _build_category_card(self):
         card = QFrame()
         card.setProperty("role", "card")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(4)
 
-        title = QLabel("Ingresos y margen")
+        title = QLabel("Ingresos por categoría")
         title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
         layout.addWidget(title)
 
-        canvas = MplCanvas(height=3)
-        canvas.axes.set_xlabel("Ingresos", fontsize=9, color=styles.MUTED)
-        canvas.axes.set_ylabel("Margen %", fontsize=9, color=styles.MUTED)
-        canvas.axes.xaxis.set_major_formatter(MplCanvas.miles_formatter())
+        subtitle = QLabel("Del filtro actual; la barra verde es la categoría líder")
+        subtitle.setStyleSheet(f"font-size: 12px; color: {styles.MUTED};")
+        layout.addWidget(subtitle)
+
+        canvas = MplCanvas(height=2.8)
+        canvas.setMinimumHeight(280)
         layout.addWidget(canvas)
         return card, canvas
 
-    def _update_scatter(self, rows: list[dict]) -> None:
-        self.scatter_canvas.axes.clear()
-        # reaplica estilo base (clear borra grid/spines del MplCanvas)
-        self.scatter_canvas._style_axes(self.scatter_canvas.axes)
-        self.scatter_canvas.axes.set_xlabel("Ingresos", fontsize=9, color=styles.MUTED)
-        self.scatter_canvas.axes.set_ylabel("Margen %", fontsize=9, color=styles.MUTED)
-        self.scatter_canvas.axes.xaxis.set_major_formatter(MplCanvas.miles_formatter())
-        if rows:
-            self.scatter_canvas.axes.scatter(
-                [d["ingresos"] for d in rows],
-                [d["margen"] for d in rows],
-                color=styles.VERDE, alpha=0.7, s=46, edgecolors="white", linewidths=0.8,
+    def _update_category_chart(self, rows: list[dict]) -> None:
+        canvas = self.category_canvas
+        canvas.clear()
+        ax = canvas.axes
+        data = analytics.revenue_by_category(rows)
+        if not data:
+            ax.text(0.5, 0.5, "Sin datos para el filtro", ha="center", va="center",
+                    fontsize=10, color=styles.MUTED, transform=ax.transAxes)
+            canvas.redraw()
+            return
+        names = [d["categoria"] for d in data]
+        values = [d["ingresos"] for d in data]
+        colors = [styles.LINE] * (len(values) - 1) + [styles.MENTA]
+        bars = ax.barh(names, values, color=colors, height=0.62)
+        ax.xaxis.set_major_formatter(MplCanvas.miles_formatter())
+        ax.tick_params(axis="y", labelsize=9)
+        tope = max(values) or 1.0
+        for bar, valor in zip(bars, values):
+            ax.text(
+                bar.get_width() + tope * 0.012,
+                bar.get_y() + bar.get_height() / 2,
+                analytics.fmt_money(valor),
+                va="center", fontsize=9, color=styles.MUTED,
             )
-            # anota el top por ingresos para orientar rapido
-            top = max(rows, key=lambda d: d["ingresos"])
-            self.scatter_canvas.axes.annotate(
-                top["nombre"], (top["ingresos"], top["margen"]),
-                fontsize=7, color=styles.TEXT_GRAY,
-                xytext=(6, 6), textcoords="offset points",
-            )
-        self.scatter_canvas.redraw()
+        ax.set_xlim(0, tope * 1.18)
+        canvas.redraw()

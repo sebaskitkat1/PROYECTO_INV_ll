@@ -1,3 +1,5 @@
+# Requisitos de desarrollo, pruebas y empaquetado (Python 3.10+)
+# Instalar con: pip install -r requirements-dev.txt
 -r requirements.txt
 ruff>=0.6
 mypy>=1.10

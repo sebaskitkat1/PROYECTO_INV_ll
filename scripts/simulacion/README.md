@@ -26,6 +26,28 @@ python -m unittest tests.test_simulacion
 
 Guarda `resultados/utilidad_acumulada.png`.
 
+### Un producto en una temporada corta
+
+Para la comparación que pide el ingeniero (un producto, pocas semanas):
+
+```powershell
+python scripts/simulacion/run_producto.py --producto "Jugo Verde" --dias 21
+# también acepta el id: --producto 15
+```
+
+Imprime la tabla de pedido, vendido, merma, sobrante final, venta perdida y
+utilidad; guarda `resultados/<producto>_<dias>d.png` (seis paneles:
+acumulados y totales), `..._<dias>d.csv` (detalle diario) y
+`..._<dias>d_resumen.csv` (una fila por política).
+
+La demanda es la misma en ambas políticas y las dos deciden solo con el
+pasado. Los huecos de días sin venta se completan con 0 para que la semana
+pasada cuadre. La merma se valora a costo; la venta perdida a precio de
+venta (costo de oportunidad). La **utilidad de caja** no acredita el
+sobrante final; la **utilidad con sobrante** lo valora a costo. Para un
+perecedero, la primera es la lectura conservadora: si el sobrante se tira,
+no vale nada.
+
 ## Supuestos (dilos en voz alta al presentar)
 
 1. Compra matutina: el pedido llega el mismo día (lead time 0).
@@ -41,3 +63,7 @@ Guarda `resultados/utilidad_acumulada.png`.
 - `MAE mod < MAE base` por producto: el modelo anticipa mejor.
 - `merma s/app vs c/app` y `util +`: el dinero.
 - Monte Carlo del top 1: rango P10–P90 de ahorro de merma y utilidad extra.
+- En el reporte de un producto: la línea acumulada, la brecha de merma y la
+  brecha de venta perdida; abajo, los totales con su diferencia porcentual.
+  Si la utilidad del modelo no sube en esa ventana, el reporte lo dice en
+  lugar de esconderlo.

@@ -1,0 +1,36 @@
+COSECHA - INSTALACION
+
+1. Abre "Configurar base de datos" en el menu Inicio y edita .env:
+   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD y DB_NAME.
+   Si no configuras MySQL, la app abre en modo ejemplo y no guarda cambios.
+
+2. Primera instalacion de la base:
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\frutidata_schema.sql"
+
+   Si la base ya existe, aplica las migraciones sin borrar datos:
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_ordenes_pendientes.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_catalogo_pos.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fix_totales_ventas.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_cantidades_decimales.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_inventario_recetas.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_kpi_precio_unidad.sql"
+
+3. Los usuarios de la base deben tener contrasena bcrypt. La app rechaza
+   contrasenas en claro o hashes de otro formato.
+
+4. Abre Cosecha desde el menu Inicio. El estado de la esquina indica si esta
+   usando la base o el ejemplo.
+
+5. Haz respaldo de MySQL antes de actualizar esquema o recibir ordenes de
+   compra. La recepcion de una orden descuenta inventario y registra kardex.
+
+Archivos utiles:
+  .env                  Configuracion local (no compartir)
+  db\frutidata_schema.sql
+  db\migrate_ordenes_pendientes.sql
+  db\migrate_catalogo_pos.sql
+  db\migrate_fix_totales_ventas.sql
+  db\migrate_cantidades_decimales.sql
+  db\migrate_inventario_recetas.sql
+  db\migrate_kpi_precio_unidad.sql
+  README.md

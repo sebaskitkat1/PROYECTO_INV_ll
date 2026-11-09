@@ -305,7 +305,7 @@ CREATE TABLE detalle_ventas (
     id_detalle       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     id_venta         BIGINT UNSIGNED NOT NULL,
     id_producto      INT UNSIGNED NOT NULL,
-    cantidad         SMALLINT UNSIGNED NOT NULL,
+    cantidad         DECIMAL(10,3) NOT NULL,
     precio_unitario  DECIMAL(10,2) NOT NULL DEFAULT 0,
     costo_unitario   DECIMAL(10,2) NOT NULL DEFAULT 0,
     subtotal         DECIMAL(12,2) GENERATED ALWAYS AS (cantidad * precio_unitario) STORED,
@@ -482,31 +482,81 @@ INSERT INTO tipos_movimiento (clave, nombre, signo) VALUES
     ('AJUSTE_POSITIVO',  'Ajuste de inventario (+)',    1),
     ('AJUSTE_NEGATIVO',  'Ajuste de inventario (−)',   -1);
 
-INSERT INTO categorias_producto (nombre) VALUES ('Frutas'), ('Verduras'), ('Jugos');
+INSERT INTO categorias_producto (nombre) VALUES
+    ('Frutas'), ('Verduras'), ('Jugos'), ('Bebidas'), ('Snacks'), ('Abarrotes');
 
--- 18 productos. Precio = ingresos/cantidad del mock de la app; costo = precio × (1 − margen).
+-- 66 productos para el punto de venta. Precio en pesos; costo = precio × (1 − margen).
+-- Principalmente frutas y verduras; ademas jugos, bebidas, snacks y abarrotes.
 INSERT INTO productos (id_categoria, id_unidad, nombre, precio_venta, costo_unitario,
                        vida_anaquel_dias, requiere_refrigeracion, mes_inicio_temporada, mes_fin_temporada)
 SELECT c.id_categoria, u.id_unidad, x.nombre, x.precio, x.costo, x.vida, x.frio, x.ini, x.fin
 FROM (
-    SELECT 'Mango'           AS nombre, 'Frutas' AS cat, 'kg'  AS uni, 28.00 AS precio, 14.84 AS costo,  6 AS vida, 0 AS frio,  4 AS ini,  9 AS fin UNION ALL
-    SELECT 'Manzana Roja',               'Frutas',   'kg',    18.00,  9.90, 45, 1,  8, 11 UNION ALL
-    SELECT 'Uva',                        'Frutas',   'kg',    32.00, 20.48,  6, 1,  5,  8 UNION ALL
-    SELECT 'Naranja',                    'Frutas',   'kg',    14.00,  5.88, 18, 0, 10,  3 UNION ALL
-    SELECT 'Fresa',                      'Frutas',   'kg',    35.00, 23.45,  4, 1, 11,  4 UNION ALL
-    SELECT 'Plátano',                    'Frutas',   'kg',    12.00,  5.76,  6, 0,  1, 12 UNION ALL
-    SELECT 'Piña',                       'Frutas',   'pzas',  25.00, 12.75,  6, 0,  1, 12 UNION ALL
-    SELECT 'Sandía',                     'Frutas',   'pzas',  60.00, 33.60, 10, 0,  4,  8 UNION ALL
-    SELECT 'Papaya',                     'Frutas',   'kg',    22.00, 11.00,  5, 0,  1, 12 UNION ALL
-    SELECT 'Limón',                      'Frutas',   'kg',    18.00,  7.20, 18, 0,  1, 12 UNION ALL
-    SELECT 'Aguacate',                   'Frutas',   'kg',    45.00, 27.00,  5, 0,  8,  2 UNION ALL
-    SELECT 'Durazno',                    'Frutas',   'kg',    38.00, 22.04,  4, 1,  6,  9 UNION ALL
-    SELECT 'Melón',                      'Frutas',   'pzas',  30.00, 16.20,  8, 0,  4,  8 UNION ALL
-    SELECT 'Jitomate',                   'Verduras', 'kg',    16.00,  7.20,  6, 0,  1, 12 UNION ALL
-    SELECT 'Cebolla',                    'Verduras', 'kg',    16.00,  7.20, 45, 0,  1, 12 UNION ALL
-    SELECT 'Papa',                       'Verduras', 'kg',    14.00,  5.88, 45, 0,  1, 12 UNION ALL
-    SELECT 'Jugo de Naranja',            'Jugos',    'L',     20.00,  7.80,  2, 1,  1, 12 UNION ALL
-    SELECT 'Jugo Verde',                 'Jugos',    'L',     25.00, 11.25,  2, 1,  1, 12
+    SELECT 'Mango' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 28.00 AS precio, 14.84 AS costo, 6 AS vida, 0 AS frio, 4 AS ini, 9 AS fin UNION ALL
+    SELECT 'Manzana Roja' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 18.00 AS precio, 9.90 AS costo, 45 AS vida, 1 AS frio, 8 AS ini, 11 AS fin UNION ALL
+    SELECT 'Uva' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 32.00 AS precio, 20.48 AS costo, 6 AS vida, 1 AS frio, 5 AS ini, 8 AS fin UNION ALL
+    SELECT 'Naranja' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 14.00 AS precio, 5.88 AS costo, 18 AS vida, 0 AS frio, 10 AS ini, 3 AS fin UNION ALL
+    SELECT 'Fresa' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 35.00 AS precio, 23.45 AS costo, 4 AS vida, 1 AS frio, 11 AS ini, 4 AS fin UNION ALL
+    SELECT 'Plátano' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 12.00 AS precio, 5.76 AS costo, 6 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Piña' AS nombre, 'Frutas' AS cat, 'pzas' AS uni, 25.00 AS precio, 12.75 AS costo, 6 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Sandía' AS nombre, 'Frutas' AS cat, 'pzas' AS uni, 60.00 AS precio, 33.60 AS costo, 10 AS vida, 0 AS frio, 4 AS ini, 8 AS fin UNION ALL
+    SELECT 'Papaya' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 22.00 AS precio, 11.00 AS costo, 5 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Limón' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 18.00 AS precio, 7.20 AS costo, 18 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Aguacate' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 45.00 AS precio, 27.00 AS costo, 5 AS vida, 0 AS frio, 8 AS ini, 2 AS fin UNION ALL
+    SELECT 'Durazno' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 38.00 AS precio, 22.04 AS costo, 4 AS vida, 1 AS frio, 6 AS ini, 9 AS fin UNION ALL
+    SELECT 'Melón' AS nombre, 'Frutas' AS cat, 'pzas' AS uni, 30.00 AS precio, 16.20 AS costo, 8 AS vida, 0 AS frio, 4 AS ini, 8 AS fin UNION ALL
+    SELECT 'Pera' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 38.00 AS precio, 22.80 AS costo, 20 AS vida, 1 AS frio, 7 AS ini, 10 AS fin UNION ALL
+    SELECT 'Manzana Verde' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 22.00 AS precio, 12.10 AS costo, 45 AS vida, 1 AS frio, 8 AS ini, 11 AS fin UNION ALL
+    SELECT 'Mandarina' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 16.00 AS precio, 7.20 AS costo, 14 AS vida, 0 AS frio, 11 AS ini, 2 AS fin UNION ALL
+    SELECT 'Toronja' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 15.00 AS precio, 6.60 AS costo, 21 AS vida, 0 AS frio, 10 AS ini, 3 AS fin UNION ALL
+    SELECT 'Guayaba' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 24.00 AS precio, 12.00 AS costo, 5 AS vida, 0 AS frio, 8 AS ini, 11 AS fin UNION ALL
+    SELECT 'Kiwi' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 45.00 AS precio, 27.00 AS costo, 20 AS vida, 1 AS frio, 5 AS ini, 9 AS fin UNION ALL
+    SELECT 'Ciruela' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 36.00 AS precio, 21.60 AS costo, 5 AS vida, 1 AS frio, 5 AS ini, 8 AS fin UNION ALL
+    SELECT 'Coco' AS nombre, 'Frutas' AS cat, 'pzas' AS uni, 20.00 AS precio, 10.00 AS costo, 20 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Mamey' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 40.00 AS precio, 24.00 AS costo, 5 AS vida, 0 AS frio, 3 AS ini, 7 AS fin UNION ALL
+    SELECT 'Zarzamora' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 90.00 AS precio, 54.00 AS costo, 3 AS vida, 1 AS frio, 5 AS ini, 8 AS fin UNION ALL
+    SELECT 'Granada' AS nombre, 'Frutas' AS cat, 'kg' AS uni, 35.00 AS precio, 21.00 AS costo, 15 AS vida, 0 AS frio, 8 AS ini, 11 AS fin UNION ALL
+    SELECT 'Jitomate' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 16.00 AS precio, 7.20 AS costo, 6 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Cebolla' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 16.00 AS precio, 7.20 AS costo, 45 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Papa' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 14.00 AS precio, 5.88 AS costo, 45 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Tomate Verde' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 18.00 AS precio, 8.10 AS costo, 10 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Chile Jalapeño' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 22.00 AS precio, 9.90 AS costo, 14 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Chile Serrano' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 20.00 AS precio, 9.00 AS costo, 14 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Pimiento Morrón' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 32.00 AS precio, 16.00 AS costo, 10 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Zanahoria' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 12.00 AS precio, 5.40 AS costo, 30 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Calabacita' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 16.00 AS precio, 7.20 AS costo, 7 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Pepino' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 14.00 AS precio, 6.30 AS costo, 10 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Lechuga Romana' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 18.00 AS precio, 9.00 AS costo, 5 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Espinaca' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 20.00 AS precio, 10.00 AS costo, 4 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Brócoli' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 25.00 AS precio, 12.50 AS costo, 7 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Coliflor' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 22.00 AS precio, 11.00 AS costo, 7 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Repollo' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 16.00 AS precio, 8.00 AS costo, 14 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Betabel' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 18.00 AS precio, 8.10 AS costo, 20 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Apio' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 20.00 AS precio, 10.00 AS costo, 10 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Elote' AS nombre, 'Verduras' AS cat, 'pzas' AS uni, 10.00 AS precio, 4.00 AS costo, 4 AS vida, 1 AS frio, 5 AS ini, 10 AS fin UNION ALL
+    SELECT 'Camote' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 18.00 AS precio, 8.10 AS costo, 30 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Nopal' AS nombre, 'Verduras' AS cat, 'kg' AS uni, 16.00 AS precio, 7.20 AS costo, 7 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Jugo de Naranja' AS nombre, 'Jugos' AS cat, 'L' AS uni, 20.00 AS precio, 7.80 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Jugo Verde' AS nombre, 'Jugos' AS cat, 'L' AS uni, 25.00 AS precio, 11.25 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Jugo de Betabel' AS nombre, 'Jugos' AS cat, 'L' AS uni, 28.00 AS precio, 12.60 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Jugo de Zanahoria' AS nombre, 'Jugos' AS cat, 'L' AS uni, 24.00 AS precio, 10.80 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Limonada' AS nombre, 'Jugos' AS cat, 'L' AS uni, 18.00 AS precio, 6.30 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Smoothie de Fresa' AS nombre, 'Jugos' AS cat, 'L' AS uni, 35.00 AS precio, 17.50 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Agua de Horchata' AS nombre, 'Bebidas' AS cat, 'L' AS uni, 20.00 AS precio, 7.00 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Agua de Jamaica' AS nombre, 'Bebidas' AS cat, 'L' AS uni, 18.00 AS precio, 5.40 AS costo, 2 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Agua Natural' AS nombre, 'Bebidas' AS cat, 'pzas' AS uni, 12.00 AS precio, 5.00 AS costo, 180 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Refresco de Cola' AS nombre, 'Bebidas' AS cat, 'pzas' AS uni, 20.00 AS precio, 12.00 AS costo, 180 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Té Helado' AS nombre, 'Bebidas' AS cat, 'pzas' AS uni, 22.00 AS precio, 10.00 AS costo, 90 AS vida, 1 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Café Americano' AS nombre, 'Bebidas' AS cat, 'pzas' AS uni, 25.00 AS precio, 8.00 AS costo, 1 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Papas Fritas' AS nombre, 'Snacks' AS cat, 'pzas' AS uni, 18.00 AS precio, 10.00 AS costo, 90 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Cacahuates' AS nombre, 'Snacks' AS cat, 'pzas' AS uni, 15.00 AS precio, 7.00 AS costo, 120 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Granola' AS nombre, 'Snacks' AS cat, 'pzas' AS uni, 35.00 AS precio, 18.00 AS costo, 90 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Barra de Cereal' AS nombre, 'Snacks' AS cat, 'pzas' AS uni, 15.00 AS precio, 8.00 AS costo, 180 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Galletas de Avena' AS nombre, 'Snacks' AS cat, 'pzas' AS uni, 20.00 AS precio, 10.00 AS costo, 60 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Chocolate Amargo' AS nombre, 'Snacks' AS cat, 'pzas' AS uni, 30.00 AS precio, 18.00 AS costo, 180 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Miel' AS nombre, 'Abarrotes' AS cat, 'pzas' AS uni, 80.00 AS precio, 48.00 AS costo, 365 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Mermelada de Fresa' AS nombre, 'Abarrotes' AS cat, 'pzas' AS uni, 55.00 AS precio, 30.00 AS costo, 180 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Semillas de Chía' AS nombre, 'Abarrotes' AS cat, 'pzas' AS uni, 45.00 AS precio, 25.00 AS costo, 365 AS vida, 0 AS frio, 1 AS ini, 12 AS fin UNION ALL
+    SELECT 'Avena' AS nombre, 'Abarrotes' AS cat, 'kg' AS uni, 35.00 AS precio, 18.00 AS costo, 180 AS vida, 0 AS frio, 1 AS ini, 12 AS fin
 ) x
 JOIN categorias_producto c ON c.nombre = x.cat
 JOIN unidades_medida u     ON u.clave  = x.uni;
@@ -608,6 +658,62 @@ FROM (
 JOIN ingredientes i ON i.nombre = x.ing
 CROSS JOIN (SELECT id_sucursal FROM sucursales ORDER BY id_sucursal LIMIT 1) s;
 
+-- Completa ingredientes, recetas, inventario y proveedores para los 66 productos.
+-- "Manzana Roja" reutiliza el ingrediente historico "Manzana".
+INSERT INTO categorias_ingrediente (nombre) VALUES
+    ('Bebidas'), ('Snacks'), ('Abarrotes')
+ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
+
+INSERT INTO ingredientes (id_categoria_ing, id_unidad, nombre, costo_unitario,
+                          vida_anaquel_dias, requiere_refrigeracion,
+                          mes_inicio_temporada, mes_fin_temporada)
+SELECT ci.id_categoria_ing, u.id_unidad, p.nombre, p.costo_unitario,
+       p.vida_anaquel_dias, p.requiere_refrigeracion,
+       p.mes_inicio_temporada, p.mes_fin_temporada
+FROM productos p
+JOIN categorias_producto cp ON cp.id_categoria = p.id_categoria
+JOIN categorias_ingrediente ci
+  ON ci.nombre = CASE cp.nombre
+                     WHEN 'Jugos' THEN 'Jugos y preparados'
+                     ELSE cp.nombre
+                 END
+JOIN unidades_medida u ON u.id_unidad = p.id_unidad
+LEFT JOIN ingredientes i ON i.nombre = p.nombre
+WHERE p.activo = 1
+  AND p.nombre <> 'Manzana Roja'
+  AND i.id_ingrediente IS NULL;
+
+INSERT INTO recetas (id_producto, id_ingrediente, cantidad)
+SELECT p.id_producto, i.id_ingrediente, 1.0000
+FROM productos p
+JOIN ingredientes i
+  ON i.nombre = CASE p.nombre
+                    WHEN 'Manzana Roja' THEN 'Manzana'
+                    ELSE p.nombre
+                END
+WHERE p.activo = 1
+  AND NOT EXISTS (SELECT 1 FROM recetas r WHERE r.id_producto = p.id_producto);
+
+INSERT INTO inventario (id_sucursal, id_ingrediente, stock_actual, stock_minimo)
+SELECT s.id_sucursal, i.id_ingrediente, 20.000, 10.000
+FROM ingredientes i
+CROSS JOIN (SELECT id_sucursal FROM sucursales ORDER BY id_sucursal LIMIT 1) s
+LEFT JOIN inventario inv
+  ON inv.id_sucursal = s.id_sucursal
+ AND inv.id_ingrediente = i.id_ingrediente
+WHERE i.activo = 1
+  AND inv.id_ingrediente IS NULL;
+
+INSERT INTO ingrediente_proveedor (id_ingrediente, id_proveedor, precio_compra, es_principal)
+SELECT i.id_ingrediente, p.id_proveedor, i.costo_unitario, 1
+FROM ingredientes i
+JOIN (SELECT id_proveedor FROM proveedores ORDER BY id_proveedor LIMIT 1) p
+LEFT JOIN ingrediente_proveedor ip
+  ON ip.id_ingrediente = i.id_ingrediente
+ AND ip.es_principal = 1
+WHERE i.activo = 1
+  AND ip.id_ingrediente IS NULL;
+
 -- Lotes de simulación con caducidad relativa a hoy (siempre vigentes al correr).
 INSERT INTO lotes_inventario (id_sucursal, id_ingrediente, cantidad, fecha_ingreso, fecha_caducidad, costo_unitario)
 SELECT s.id_sucursal, i.id_ingrediente, x.cant,
@@ -652,10 +758,13 @@ CREATE TRIGGER trg_detalle_ventas_ai
 AFTER INSERT ON detalle_ventas
 FOR EACH ROW
 BEGIN
-    -- Cálculo explícito (no depende del orden de evaluación del SET)
+    -- Guarda el subtotal anterior en una variable. Si se usa la columna dos
+    -- veces en el SET, MySQL ya la ve actualizada y el total se duplica.
+    DECLARE v_subtotal DECIMAL(12,2);
+    SELECT subtotal INTO v_subtotal FROM ventas WHERE id_venta = NEW.id_venta;
     UPDATE ventas
-       SET subtotal = subtotal + NEW.subtotal,
-           total    = GREATEST(subtotal + NEW.subtotal - descuento, 0)
+       SET subtotal = v_subtotal + NEW.subtotal,
+           total    = GREATEST(v_subtotal + NEW.subtotal - descuento, 0)
      WHERE id_venta = NEW.id_venta;
 
     IF COALESCE(@omitir_inventario, 0) = 0 THEN
@@ -851,7 +960,7 @@ SELECT s.id_sucursal,
        COALESCE(h.ventas, 0)   AS ventas_hoy,
        COALESCE(a.ventas, 0)   AS ventas_ayer,
        ROUND((COALESCE(h.ventas, 0) - a.ventas) / NULLIF(a.ventas, 0) * 100, 1) AS variacion_pct,
-       ROUND(h.ventas / NULLIF(h.tickets, 0), 2) AS ticket_promedio,
+       ROUND(h.ventas / NULLIF(h.unidades, 0), 2) AS ticket_promedio,
        COALESCE(h.unidades, 0) AS unidades_hoy,
        (SELECT COUNT(*) FROM v_estado_inventario e
          WHERE e.id_sucursal = s.id_sucursal AND e.estado = 'critico') AS stock_en_riesgo

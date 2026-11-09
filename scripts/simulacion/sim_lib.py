@@ -67,9 +67,11 @@ def percentil(xs, q):
 # -- politicas de pedido (un numero por dia, sin ver el futuro) ----------
 
 def pedido_base(fechas_hist, vals_hist):
-    # lo que haria el dueno sin app: lo del mismo dia de la semana pasada
-    if len(vals_hist) >= 8:
-        return max(0.0, float(vals_hist[-8]))
+    # lo que haria el dueno sin app: lo del mismo dia de la semana pasada.
+    # El historial termina ayer, asi que el mismo dia de la semana pasada
+    # es vals_hist[-7], no [-8].
+    if len(vals_hist) >= 7:
+        return max(0.0, float(vals_hist[-7]))
     return max(0.0, sum(vals_hist) / len(vals_hist)) if vals_hist else 0.0
 
 

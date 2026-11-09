@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Diagrama entidad-relación — frutidata</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root { --paper:#F3F6EF; --surface:#FFFFFF; --ink:#1D2A1F; --muted:#5D7060; --verde:#2C5233; --line:#DCE5D6; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:40px 48px 48px; background:var(--paper); color:var(--ink); font-family:"Segoe UI",system-ui,sans-serif; }
+  header { max-width:1500px; margin:0 auto 22px; }
+  h1 { margin:0 0 8px; font-size:32px; letter-spacing:-.02em; color:var(--verde); }
+  .sub { margin:0; color:var(--muted); font-size:15px; line-height:1.55; max-width:1200px; }
+  .leyenda { display:flex; gap:20px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:var(--muted); }
+  .chip { display:inline-flex; align-items:center; gap:7px; }
+  .dot { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .panel { max-width:1500px; margin:0 auto 26px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px 26px 26px; box-shadow:0 8px 26px rgba(29,42,31,.05); }
+  .panel h2 { margin:0 0 4px; font-size:18px; color:var(--verde); }
+  .panel p { margin:0 0 14px; color:var(--muted); font-size:13.5px; }
+  .mermaid { display:flex; justify-content:center; overflow-x:auto; }
+  .mermaid svg { max-width:100%; height:auto; }
+  footer { max-width:1500px; margin:0 auto; color:var(--muted); font-size:12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Diagrama entidad-relación · frutidata</h1>
+  <p class="sub">20 tablas esenciales (18 del flujo operativo + 2 catálogos de apoyo) agrupadas en cinco módulos. Juntas explican el flujo completo: catálogo → venta → inventario → compra → pronóstico.</p>
+  <div class="leyenda">
+    <span class="chip"><span class="dot" style="background:#DDEBD9"></span> Catálogo y seguridad</span>
+    <span class="chip"><span class="dot" style="background:#F7F0D9"></span> Operación: ventas e inventario</span>
+    <span class="chip"><span class="dot" style="background:#F8E8E2"></span> Compras y pronóstico</span>
+    <span class="chip">PK = llave primaria · FK = llave foránea · UK = único</span>
+  </div>
+</header>
+<main>
+  <section class="panel">
+    <h2>1. Catálogo y ventas</h2>
+    <p>Productos, categorías, unidades, usuarios, sucursales y el detalle de cada venta.</p>
+    <pre class="mermaid">erDiagram
+    ROLES ||--o{ USUARIOS : &quot;asigna&quot;
+    USUARIOS ||--o{ VENTAS : &quot;cobra&quot;
+    SUCURSALES ||--o{ VENTAS : &quot;opera&quot;
+    CATEGORIAS_PRODUCTO ||--o{ PRODUCTOS : &quot;clasifica&quot;
+    UNIDADES_MEDIDA ||--o{ PRODUCTOS : &quot;mide&quot;
+    PRODUCTOS ||--o{ DETALLE_VENTAS : &quot;se vende&quot;
+    VENTAS ||--|{ DETALLE_VENTAS : &quot;contiene&quot;
+
+    ROLES {
+        tinyint id_rol PK
+        varchar nombre
+    }
+    USUARIOS {
+        int id_usuario PK
+        tinyint id_rol FK
+        varchar nombre
+        varchar correo UK
+        boolean activo
+    }
+    SUCURSALES {
+        int id_sucursal PK
+        varchar nombre
+        boolean activa
+    }
+    CATEGORIAS_PRODUCTO {
+        tinyint id_categoria PK
+        varchar nombre
+    }
+    UNIDADES_MEDIDA {
+        tinyint id_unidad PK
+        varchar clave
+        varchar nombre
+    }
+    PRODUCTOS {
+        int id_producto PK
+        tinyint id_categoria FK
+        tinyint id_unidad FK
+        varchar nombre
+        decimal precio_venta
+        decimal costo_unitario
+        int vida_anaquel_dias
+        boolean activo
+    }
+    VENTAS {
+        bigint id_venta PK
+        int id_sucursal FK
+        int id_usuario FK
+        int id_cliente FK
+        tinyint id_metodo_pago FK
+        datetime fecha_hora
+        decimal total
+        enum estado
+    }
+    DETALLE_VENTAS {
+        bigint id_detalle PK
+        bigint id_venta FK
+        int id_producto FK
+        int cantidad
+        decimal precio_unitario
+        decimal costo_unitario
+        decimal subtotal
+    }</pre>
+  </section>
+  <section class="panel">
+    <h2>2. Recetas: productos e ingredientes</h2>
+    <p>Un producto vendible consume ingredientes; la receta guarda la cantidad por unidad.</p>
+    <pre class="mermaid">erDiagram
+    PRODUCTOS ||--o{ RECETAS : &quot;compone&quot;
+    INGREDIENTES ||--o{ RECETAS : &quot;ingrediente&quot;
+
+    PRODUCTOS {
+        int id_producto PK
+        varchar nombre
+        decimal precio_venta
+    }
+    INGREDIENTES {
+        int id_ingrediente PK
+        tinyint id_categoria_ing FK
+        tinyint id_unidad FK
+        varchar nombre
+        decimal costo_unitario
+        int vida_anaquel_dias
+        boolean activo
+    }
+    RECETAS {
+        int id_producto PK
+        int id_ingrediente PK
+        decimal cantidad
+    }</pre>
+  </section>
+  <section class="panel">
+    <h2>3. Inventario con caducidad</h2>
+    <p>Saldo por sucursal, lotes con fecha de caducidad y kardex de movimientos.</p>
+    <pre class="mermaid">erDiagram
+    SUCURSALES ||--o{ INVENTARIO : &quot;almacena&quot;
+    INGREDIENTES ||--o{ INVENTARIO : &quot;stock&quot;
+    SUCURSALES ||--o{ LOTES_INVENTARIO : &quot;lote&quot;
+    INGREDIENTES ||--o{ LOTES_INVENTARIO : &quot;lote&quot;
+    SUCURSALES ||--o{ MOVIMIENTOS_INVENTARIO : &quot;mueve&quot;
+    INGREDIENTES ||--o{ MOVIMIENTOS_INVENTARIO : &quot;mueve&quot;
+    USUARIOS ||--o{ MOVIMIENTOS_INVENTARIO : &quot;registra&quot;
+    VENTAS ||--o{ MOVIMIENTOS_INVENTARIO : &quot;descuenta&quot;
+
+    SUCURSALES {
+        int id_sucursal PK
+        varchar nombre
+    }
+    INGREDIENTES {
+        int id_ingrediente PK
+        varchar nombre
+        decimal costo_unitario
+        int vida_anaquel_dias
+    }
+    INVENTARIO {
+        int id_sucursal PK
+        int id_ingrediente PK
+        decimal stock_actual
+        decimal stock_minimo
+        datetime updated_at
+    }
+    LOTES_INVENTARIO {
+        int id_lote PK
+        int id_sucursal FK
+        int id_ingrediente FK
+        decimal cantidad
+        date fecha_ingreso
+        date fecha_caducidad
+        decimal costo_unitario
+    }
+    MOVIMIENTOS_INVENTARIO {
+        bigint id_movimiento PK
+        int id_sucursal FK
+        int id_ingrediente FK
+        tinyint id_tipo_mov FK
+        decimal cantidad
+        datetime fecha_hora
+        int id_usuario FK
+        bigint id_venta FK
+        int id_orden FK
+    }
+    USUARIOS {
+        int id_usuario PK
+        varchar nombre
+    }
+    VENTAS {
+        bigint id_venta PK
+        datetime fecha_hora
+    }</pre>
+  </section>
+  <section class="panel">
+    <h2>4. Compras y proveedores</h2>
+    <p>Cabecera de orden, detalle por ingrediente y recepción.</p>
+    <pre class="mermaid">erDiagram
+    PROVEEDORES ||--o{ ORDENES_COMPRA : &quot;surte&quot;
+    SUCURSALES ||--o{ ORDENES_COMPRA : &quot;solicita&quot;
+    USUARIOS ||--o{ ORDENES_COMPRA : &quot;crea&quot;
+    ORDENES_COMPRA ||--|{ DETALLE_ORDENES_COMPRA : &quot;detalla&quot;
+    INGREDIENTES ||--o{ DETALLE_ORDENES_COMPRA : &quot;pide&quot;
+
+    PROVEEDORES {
+        int id_proveedor PK
+        varchar nombre
+        int dias_entrega
+        boolean activo
+    }
+    SUCURSALES {
+        int id_sucursal PK
+        varchar nombre
+    }
+    USUARIOS {
+        int id_usuario PK
+        varchar nombre
+    }
+    ORDENES_COMPRA {
+        int id_orden PK
+        int id_sucursal FK
+        int id_proveedor FK
+        int id_usuario FK
+        datetime fecha_creacion
+        datetime fecha_recepcion
+        enum estado
+        decimal total
+    }
+    DETALLE_ORDENES_COMPRA {
+        int id_detalle PK
+        int id_orden FK
+        int id_ingrediente FK
+        decimal cantidad_solicitada
+        decimal cantidad_recibida
+        decimal precio_unitario
+    }
+    INGREDIENTES {
+        int id_ingrediente PK
+        varchar nombre
+        decimal costo_unitario
+    }</pre>
+  </section>
+  <section class="panel">
+    <h2>5. Pronóstico</h2>
+    <p>Corrida, serie diaria y detalle por producto; incluye los MAE del backtest.</p>
+    <pre class="mermaid">erDiagram
+    MODELOS_PRONOSTICO ||--o{ PRONOSTICOS : &quot;ejecuta&quot;
+    SUCURSALES ||--o{ PRONOSTICOS : &quot;genera&quot;
+    USUARIOS ||--o{ PRONOSTICOS : &quot;solicita&quot;
+    PRONOSTICOS ||--o{ PRONOSTICO_DIARIO : &quot;serie diaria&quot;
+    PRONOSTICOS ||--o{ PRONOSTICO_PRODUCTO : &quot;detalle por producto&quot;
+    PRODUCTOS ||--o{ PRONOSTICO_PRODUCTO : &quot;producto&quot;
+
+    MODELOS_PRONOSTICO {
+        tinyint id_modelo PK
+        varchar nombre
+        json parametros
+    }
+    PRONOSTICOS {
+        int id_pronostico PK
+        tinyint id_modelo FK
+        int id_sucursal FK
+        int id_usuario FK
+        datetime fecha_generacion
+        int horizonte_dias
+        decimal mae_modelo
+        decimal mae_naive
+        decimal mae_ma7
+        boolean es_preliminar
+    }
+    PRONOSTICO_DIARIO {
+        int id_pronostico PK
+        date fecha PK
+        decimal ventas_estimadas
+    }
+    PRONOSTICO_PRODUCTO {
+        int id_pronostico PK
+        int id_producto PK
+        decimal ingresos_actual
+        decimal ingresos_predicho
+        decimal crecimiento_pct
+    }
+    PRODUCTOS {
+        int id_producto PK
+        varchar nombre
+    }
+    SUCURSALES {
+        int id_sucursal PK
+        varchar nombre
+    }
+    USUARIOS {
+        int id_usuario PK
+        varchar nombre
+    }</pre>
+  </section>
+</main>
+<footer>Fuente: db/frutidata_schema.sql · Las vistas v_* no se dibujan porque son consultas de reporte.</footer>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    securityLevel: "loose",
+    themeVariables: {
+      background: "#FFFFFF",
+      primaryColor: "#EAF0E8",
+      primaryTextColor: "#1D2A1F",
+      primaryBorderColor: "#2C5233",
+      lineColor: "#5B7A5A",
+      secondaryColor: "#F7F0D9",
+      tertiaryColor: "#F8E8E2",
+      fontFamily: "Segoe UI, system-ui, sans-serif",
+      fontSize: "15px"
+    },
+    er: { useMaxWidth: true, diagramPadding: 18, layoutDirection: "TB", minEntityWidth: 130, minEntityHeight: 55, entityPadding: 14, stroke: "gray", fill: "honeydew", fontSize: 14 }
+  });
+</script>
+</body>
+</html>

@@ -344,7 +344,7 @@ class InventoryScreen(QWidget):
             estado_item.setFlags(estado_item.flags() & ~Qt.ItemIsEditable)
             tbl.setItem(r, 4, estado_item)
 
-        tbl.setMinimumHeight(min(40 * len(rows) + 40, 420) if rows else 120)
+        tbl.setMinimumHeight(min(40 * len(rows) + 40, 300) if rows else 120)
         tbl.resizeColumnsToContents()
         tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         tbl.setSortingEnabled(True)
@@ -430,52 +430,80 @@ class InventoryScreen(QWidget):
     def _build_charts_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(16)
-        row.addWidget(self._rotation_chart_card())
-        row.addWidget(self._pareto_chart_card())
+        row.addWidget(self._coverage_chart_card())
+        row.addWidget(self._abc_chart_card())
         return row
 
-    def _rotation_chart_card(self) -> QFrame:
-        card = self._chart_card("Cobertura (días)")
-        canvas = MplCanvas(height=2.6)
-        # misma fuente que la tabla: stock / consumo; color segun estado
+    def _coverage_chart_card(self) -> QFrame:
+        # solo los 10 mas urgentes: con 66 ingredientes el grafico completo
+        # era ilegible. La tabla de abajo conserva todos los datos.
         items = [i for i in self.inventory if i.get("diasAgotar") is not None]
+        total = len(items)
+        subtitle = (f"10 de {total} con menor cobertura" if total > 10
+                    else f"{total} ingredientes con consumo")
+        card = self._chart_card("Cobertura (días)", subtitle)
+        canvas = MplCanvas(height=2.5)
+        canvas.setMinimumHeight(250)
+
         items.sort(key=lambda i: float(i["diasAgotar"]))
-        names = [i["nombre"].split("(")[0].strip() for i in items][::-1]
-        values = [float(i["diasAgotar"]) for i in items][::-1]
-        color_por_estado = {"critico": styles.CLAY, "advertencia": styles.MENTA}
-        colors = [color_por_estado.get(i["estado"], styles.MENTA_SOFT) for i in items][::-1]
-        canvas.axes.barh(names, values, color=colors, height=0.55)
-        canvas.axes.set_xlabel("días", fontsize=9, color=styles.MUTED)
-        canvas.axes.tick_params(axis="y", labelsize=8)
+        items = items[:10][::-1]  # menor cobertura arriba
+        names = [i["nombre"].split("(")[0].strip() for i in items]
+        values = [float(i["diasAgotar"]) for i in items]
+        color_por_estado = {
+            "critico": styles.CLAY,
+            "advertencia": styles.HONEY,
+            "optimo": styles.MENTA,
+            "sin_minimo": styles.FAINT,
+        }
+        colors = [color_por_estado.get(i.get("estado"), styles.MENTA_SOFT) for i in items]
+        if values:
+            bars = canvas.axes.barh(names, values, color=colors, height=0.62)
+            canvas.axes.set_xlabel("días", fontsize=9, color=styles.MUTED)
+            canvas.axes.tick_params(axis="y", labelsize=8)
+            tope = max(values) or 1.0
+            for bar, valor in zip(bars, values):
+                canvas.axes.text(
+                    bar.get_width() + tope * 0.015,
+                    bar.get_y() + bar.get_height() / 2,
+                    analytics.fmt_qty(valor), va="center", fontsize=8,
+                    color=styles.MUTED,
+                )
+            canvas.axes.set_xlim(0, tope * 1.14)
+        else:
+            canvas.axes.text(0.5, 0.5, "Sin consumo registrado", ha="center",
+                             va="center", fontsize=10, color=styles.MUTED,
+                             transform=canvas.axes.transAxes)
         canvas.redraw()
         card.layout().addWidget(canvas)
         return card
 
-    def _pareto_chart_card(self) -> QFrame:
-        card = self._chart_card("Qué deja más")
-        canvas = MplCanvas(height=2.6)
-        # clases ABC calculadas, no a mano; umbrales de parametros_sistema
+    def _abc_chart_card(self) -> QFrame:
+        # resumen por clase (3 barras) en lugar del Pareto con 66 productos
+        card = self._chart_card("Distribución ABC",
+                                "Participación de ingresos por clase")
+        canvas = MplCanvas(height=2.5)
+        canvas.setMinimumHeight(250)
         try:
             pareto = repository.pareto_data()
         except DBError:
             pareto = mock_data.get_pareto_data()
-        data = analytics.abc_classes(pareto, self.params["abc_corte_a"],
-                                     self.params["abc_corte_b"])
-        names = [d["nombre"] for d in data]
-        values = [d["ingresos"] for d in data]
-        cum_pct = [d["acum_pct"] for d in data]
-        bars = canvas.axes.bar(names, values, color=styles.VERDE, label="Ingresos")
-        canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
-        canvas.axes.tick_params(axis="x", labelsize=7, rotation=15)
-        ax2 = canvas.axes.twinx()
-        ax2.plot(names, cum_pct, color=styles.MENTA, marker="o", markersize=3, linewidth=1.6, label="% acum.")
-        ax2.axhline(80, color=styles.MENTA, linestyle="--", linewidth=1, alpha=0.7)
-        ax2.set_ylim(0, 105)
-        ax2.tick_params(labelsize=7, colors=styles.MUTED)
-        # etiqueta clase A/B/C sobre cada barra
-        for bar, d in zip(bars, data):
-            canvas.axes.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 80, d["clase"],
-                             ha="center", fontsize=7, fontweight="bold", color=styles.MUTED)
+        clases = analytics.abc_classes(pareto, self.params["abc_corte_a"],
+                                       self.params["abc_corte_b"])
+        resumen = analytics.abc_summary(clases)
+        labels = [f"Clase {r['clase']}\n{r['productos']} prod." for r in resumen]
+        values = [r["pct_ingresos"] for r in resumen]
+        colors = [styles.VERDE, styles.MENTA, styles.FAINT]
+        bars = canvas.axes.bar(labels, values, color=colors, width=0.55)
+        canvas.axes.set_ylim(0, 110)
+        canvas.axes.set_ylabel("% de ingresos", fontsize=9, color=styles.MUTED)
+        canvas.axes.tick_params(axis="x", labelsize=8)
+        for bar, resumen_clase in zip(bars, resumen):
+            canvas.axes.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 3,
+                f"{resumen_clase['pct_ingresos']:.0f}%",
+                ha="center", fontsize=10, fontweight="bold", color=styles.INK,
+            )
         canvas.redraw()
         card.layout().addWidget(canvas)
         return card

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Iterator
 
 
 class DBError(Exception):
@@ -109,5 +111,19 @@ def callproc(nombre: str, args: tuple = ()) -> list:
             salidas.extend(r.fetchall())
         conn.commit()
         return salidas
+    finally:
+        conn.close()
+
+
+@contextmanager
+def transaction() -> Iterator[Any]:
+    conn = connect()
+    try:
+        cur = conn.cursor(dictionary=True)
+        yield cur
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
