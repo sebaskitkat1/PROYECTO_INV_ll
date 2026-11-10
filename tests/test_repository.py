@@ -36,10 +36,11 @@ class TestMapeo(unittest.TestCase):
             "stock_actual": 3, "stock_minimo": 5, "consumo_diario": 1.5,
             "dias_agotar": 2, "estado": "critico", "lead_time_dias": 2,
             "punto_reorden": 5, "stock_seguridad": 1.5,
-            "sugerido": 9, "proveedor": "Proveedor"})
+            "merma_ventana": 0.75, "sugerido": 9, "proveedor": "Proveedor"})
         self.assertEqual(r["leadTimeDias"], 2.0)
         self.assertEqual(r["puntoReorden"], 5.0)
         self.assertEqual(r["stockSeguridad"], 1.5)
+        self.assertEqual(r["mermaVentana"], 0.75)
         self.assertEqual(r["sugerido"], 9)
         self.assertEqual(r["proveedor"], "Proveedor")
 

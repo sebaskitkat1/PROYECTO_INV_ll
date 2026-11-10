@@ -152,6 +152,7 @@ def map_inventario_row(r: dict) -> dict:
             "leadTimeDias": None if lead is None else float(lead),
             "puntoReorden": None if punto is None else float(punto),
             "stockSeguridad": float(r.get("stock_seguridad") or 0),
+            "mermaVentana": float(r.get("merma_ventana") or 0),
             "sugerido": None if sugerido is None else int(sugerido),
             "proveedor": str(r.get("proveedor") or "")}
 
@@ -207,7 +208,7 @@ def inventory_rows() -> list[dict]:
         "SELECT e.id_ingrediente, e.nombre, e.unidad, e.stock_actual, "
         "e.stock_minimo, e.consumo_diario, e.dias_agotar, e.estado, "
         "e.lead_time_dias, e.punto_reorden, e.stock_seguridad, "
-        "o.sugerido, o.proveedor "
+        "e.merma_ventana, o.sugerido, o.proveedor "
         "FROM v_estado_inventario e "
         "LEFT JOIN v_orden_compra_sugerida o "
         "  ON o.id_sucursal = e.id_sucursal "
@@ -220,6 +221,111 @@ def pareto_data() -> list[dict]:
     _hay_base()
     filas = db.fetchall("SELECT nombre, ingresos FROM v_pareto_abc")
     return [{"nombre": str(r["nombre"]), "ingresos": float(r["ingresos"] or 0)} for r in filas]
+
+
+def product_demand_series(days: int = 90, origen: str | None = None) -> dict[str, list[float]]:
+    """Serie diaria de unidades por producto, con 0 en dias sin venta.
+
+    Sirve para la clasificacion XYZ: la ventana es calendario completo, asi
+    que la intermitencia (dias en cero) tambien cuenta como variabilidad.
+    """
+    _hay_base()
+    dias = max(1, int(days))
+    inicio = datetime.date.today() - datetime.timedelta(days=dias - 1)
+    sql = (
+        "SELECT p.nombre, DATE(v.fecha_hora) AS fecha, SUM(d.cantidad) AS cantidad "
+        "FROM detalle_ventas d "
+        "JOIN ventas v ON v.id_venta = d.id_venta AND v.estado = 'completada' "
+        "JOIN productos p ON p.id_producto = d.id_producto "
+        "WHERE v.fecha_hora >= %s")
+    parametros: list[object] = [inicio]
+    if origen:
+        sql += " AND v.origen = %s"
+        parametros.append(origen)
+    sql += " GROUP BY p.nombre, DATE(v.fecha_hora)"
+    filas = db.fetchall(sql, tuple(parametros))
+    fechas = [inicio + datetime.timedelta(days=k) for k in range(dias)]
+    series: dict[str, dict[datetime.date, float]] = {}
+    for r in filas:
+        fecha = r["fecha"]
+        if isinstance(fecha, datetime.datetime):
+            fecha = fecha.date()
+        series.setdefault(str(r["nombre"]), {})[fecha] = float(r.get("cantidad") or 0)
+    return {nombre: [valores.get(f, 0.0) for f in fechas]
+            for nombre, valores in series.items()}
+
+
+def sales_report(desde: datetime.date, hasta: datetime.date,
+                 productos: list[str] | None = None,
+                 origen: str | None = None) -> dict:
+    """Reporte de ventas por producto y por dia en un rango de fechas.
+
+    Respeta el origen (`real`/`simulado`) y, si se pasan, los productos
+    elegidos. Devuelve totales por producto, serie diaria y totales generales.
+    """
+    _hay_base()
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    # rango sobre fecha_hora (no DATE) para que use el indice de ventas
+    filtros = ["v.estado = 'completada'",
+               "v.fecha_hora >= %s", "v.fecha_hora < %s + INTERVAL 1 DAY"]
+    parametros: list[object] = [desde, hasta]
+    if origen:
+        filtros.append("v.origen = %s")
+        parametros.append(origen)
+    nombres = [str(p) for p in (productos or []) if str(p).strip()]
+    if nombres:
+        marcas = ", ".join(["%s"] * len(nombres))
+        filtros.append(f"p.nombre IN ({marcas})")
+        parametros.extend(nombres)
+    where = " AND ".join(filtros)
+    base = (
+        "FROM detalle_ventas d "
+        "JOIN ventas v ON v.id_venta = d.id_venta "
+        "JOIN productos p ON p.id_producto = d.id_producto "
+        "JOIN categorias_producto c ON c.id_categoria = p.id_categoria "
+        f"WHERE {where} ")
+    por_producto = db.fetchall(
+        "SELECT p.nombre, c.nombre AS categoria, SUM(d.cantidad) AS cantidad, "
+        "SUM(d.subtotal) AS ingresos, "
+        "SUM(d.subtotal - d.cantidad * d.costo_unitario) AS utilidad " + base +
+        "GROUP BY p.nombre, c.nombre ORDER BY ingresos DESC", tuple(parametros))
+    por_dia = db.fetchall(
+        "SELECT DATE(v.fecha_hora) AS fecha, SUM(d.cantidad) AS cantidad, "
+        "SUM(d.subtotal) AS ingresos " + base +
+        "GROUP BY DATE(v.fecha_hora) ORDER BY fecha", tuple(parametros))
+    productos_out = []
+    for r in por_producto:
+        ingresos = float(r.get("ingresos") or 0)
+        utilidad = float(r.get("utilidad") or 0)
+        productos_out.append({
+            "nombre": str(r["nombre"]),
+            "categoria": str(r.get("categoria") or "Sin categoria"),
+            "cantidad": float(r.get("cantidad") or 0),
+            "ingresos": ingresos,
+            "margen": (utilidad / ingresos * 100.0) if ingresos else 0.0,
+        })
+    diario = [{"fecha": str(r["fecha"]),
+               "cantidad": float(r.get("cantidad") or 0),
+               "ingresos": float(r.get("ingresos") or 0)} for r in por_dia]
+    return {"por_producto": productos_out, "por_dia": diario,
+            "totales": analytics.sales_totals(productos_out),
+            "desde": desde, "hasta": hasta}
+
+
+def clima_resumen() -> dict:
+    """Clima de referencia del mes y productos en riesgo por calor."""
+    _hay_base()
+    filas = db.fetchall(
+        "SELECT MAX(max_mes_actual) AS temp_max, "
+        "SUM(riesgo_calor) AS riesgo, COUNT(*) AS total "
+        "FROM v_vida_util_clima")
+    if not filas:
+        return {"temp_max": None, "riesgo": 0, "total": 0}
+    r = filas[0]
+    return {"temp_max": None if r.get("temp_max") is None else float(r["temp_max"]),
+            "riesgo": int(r.get("riesgo") or 0),
+            "total": int(r.get("total") or 0)}
 
 
 def sales_history(days: int = 90, origen: str | None = None) -> list[tuple]:

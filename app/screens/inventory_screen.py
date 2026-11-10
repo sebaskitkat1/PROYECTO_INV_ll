@@ -108,6 +108,8 @@ class InventoryScreen(QWidget):
         self.inventory: list[dict] = []
         self.params = params.defaults()
         self.pareto: list[dict] = []
+        self.demand_series: dict[str, list[float]] = {}
+        self.clima: dict = {}
         self.can_buy = roles.puede_comprar(roles.rol_ui(AppState.user_role))
 
         self.alert_banner, self.alert_label = self._build_alert_banner()
@@ -143,6 +145,8 @@ class InventoryScreen(QWidget):
             "params": repository.system_params(),
             "pareto": [],
             "expiry": [],
+            "demand": {},
+            "clima": {},
         }
         try:
             datos["pareto"] = repository.pareto_data()
@@ -152,6 +156,14 @@ class InventoryScreen(QWidget):
             datos["expiry"] = repository.expiry_rows()
         except DBError:
             pass
+        try:
+            datos["demand"] = repository.product_demand_series(days=90)
+        except DBError:
+            pass
+        try:
+            datos["clima"] = repository.clima_resumen()
+        except DBError:
+            pass
         return datos
 
     @staticmethod
@@ -159,12 +171,16 @@ class InventoryScreen(QWidget):
         return {"inventory": store.get_inventory(),
                 "params": params.defaults(),
                 "pareto": mock_data.get_pareto_data(),
-                "expiry": []}
+                "expiry": [],
+                "demand": {},
+                "clima": {}}
 
     def _apply_data(self, datos: dict) -> None:
         self.inventory = datos["inventory"]
         self.params = datos["params"]
         self.pareto = datos["pareto"]
+        self.demand_series = datos.get("demand") or {}
+        self.clima = datos.get("clima") or {}
         self._reload_table()
         self._refresh_summary_and_alert()
         self._apply_expiry(datos["expiry"])
@@ -178,6 +194,7 @@ class InventoryScreen(QWidget):
                 widget.deleteLater()
         self.charts_row.addWidget(self._coverage_chart_card())
         self.charts_row.addWidget(self._abc_chart_card())
+        self.charts_row.addWidget(self._xyz_chart_card())
 
     # -- resumen -------------------------------------------------------
 
@@ -235,9 +252,11 @@ class InventoryScreen(QWidget):
         card_total, self.lbl_total = self._summary_card("Referencias", "0", styles.INK)
         card_opt, self.lbl_optimo = self._summary_card("En orden", "0", styles.SAGE)
         card_riesgo, self.lbl_riesgo = self._summary_card("Por pedir", "0", styles.CLAY)
+        card_clima, self.lbl_clima = self._summary_card("Riesgo calor", "0", styles.HONEY)
         grid.addWidget(card_total, 0, 0)
         grid.addWidget(card_opt, 0, 1)
         grid.addWidget(card_riesgo, 0, 2)
+        grid.addWidget(card_clima, 0, 3)
         return grid
 
     @staticmethod
@@ -265,6 +284,12 @@ class InventoryScreen(QWidget):
         self.lbl_total.setText(str(health["total"]))
         self.lbl_optimo.setText(str(health["optimo"]))
         self.lbl_riesgo.setText(str(len(por_pedir)))
+        clima = self.clima or {}
+        self.lbl_clima.setText(str(clima.get("riesgo", 0)))
+        temp = clima.get("temp_max")
+        self.lbl_clima.setToolTip(
+            "Productos sin refrigeración en riesgo por calor"
+            + (f" · máx. del mes {temp:.1f} °C" if temp is not None else ""))
         if por_pedir:
             nombres = [i["nombre"] for i in por_pedir]
             self.alert_label.setText(
@@ -371,10 +396,13 @@ class InventoryScreen(QWidget):
 
     def _build_table(self) -> QTableWidget:
         columns = ["Nombre Producto", "Stock Actual", "Stock Mínimo",
-                   "Días Para Agotar", "Estado", "Sugerido"]
+                   "Días Para Agotar", "Estado", "Merma", "Sugerido"]
         table = QTableWidget(0, len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(5).setToolTip(
+            "Merma y caducidad registradas en la ventana de consumo.\n"
+            "Se reparten entre los días de la ventana (no todo en un día).")
+        table.horizontalHeaderItem(6).setToolTip(
             "Cantidad sugerida = cobertura objetivo - stock - pedidos pendientes.\n"
             "Incluye lead time del proveedor y días de stock de seguridad.")
         table.verticalHeader().setVisible(False)
@@ -438,6 +466,17 @@ class InventoryScreen(QWidget):
             estado_item.setFlags(estado_item.flags() & ~Qt.ItemIsEditable)
             tbl.setItem(r, 4, estado_item)
 
+            merma = float(row.get("mermaVentana") or 0)
+            merma_item = NumericItem(analytics.fmt_qty(merma), merma)
+            merma_item.setFlags(merma_item.flags() & ~Qt.ItemIsEditable)
+            merma_item.setTextAlignment(Qt.AlignCenter)
+            if merma > 0:
+                merma_item.setForeground(QColor(styles.CLAY))
+            merma_item.setToolTip(
+                f"Merma/caducidad en la ventana: {analytics.fmt_qty(merma)} "
+                f"{row.get('unidad', '')}")
+            tbl.setItem(r, 5, merma_item)
+
             sugerido = self._sugerido_row(row)
             sugerido_item = NumericItem(str(sugerido), sugerido)
             sugerido_item.setFlags(sugerido_item.flags() & ~Qt.ItemIsEditable)
@@ -446,7 +485,7 @@ class InventoryScreen(QWidget):
                 font = sugerido_item.font()
                 font.setBold(True)
                 sugerido_item.setFont(font)
-            tbl.setItem(r, 5, sugerido_item)
+            tbl.setItem(r, 6, sugerido_item)
 
         tbl.setMinimumHeight(min(40 * len(rows) + 40, 300) if rows else 120)
         tbl.resizeColumnsToContents()
@@ -603,6 +642,46 @@ class InventoryScreen(QWidget):
                 f"{resumen_clase['pct_ingresos']:.0f}%",
                 ha="center", fontsize=10, fontweight="bold", color=styles.INK,
             )
+        canvas.redraw()
+        card.layout().addWidget(canvas)
+        return card
+
+    def _xyz_chart_card(self) -> QFrame:
+        # variabilidad de la demanda: X estable, Y media, Z erratica
+        card = self._chart_card(
+            "Variabilidad XYZ",
+            "Productos por coeficiente de variación (90 días)")
+        canvas = MplCanvas(height=2.5)
+        canvas.setMinimumHeight(250)
+        clases = {"X": 0, "Y": 0, "Z": 0}
+        cvs: dict[str, list[float]] = {"X": [], "Y": [], "Z": []}
+        for serie in self.demand_series.values():
+            info = analytics.xyz_class(serie)
+            clase = info.get("clase")
+            if clase in clases:
+                clases[clase] += 1
+                if info.get("cv") is not None:
+                    cvs[clase].append(float(info["cv"]))
+        if not any(clases.values()):
+            canvas.axes.text(0.5, 0.5, "Sin ventas suficientes para XYZ",
+                             ha="center", va="center", fontsize=10,
+                             color=styles.MUTED, transform=canvas.axes.transAxes)
+        else:
+            labels = [f"{c}\n{clases[c]} prod." for c in ("X", "Y", "Z")]
+            values = [clases[c] for c in ("X", "Y", "Z")]
+            colors = [styles.VERDE, styles.MENTA, styles.CLAY]
+            bars = canvas.axes.bar(labels, values, color=colors, width=0.55)
+            canvas.axes.set_ylabel("productos", fontsize=9, color=styles.MUTED)
+            canvas.axes.tick_params(axis="x", labelsize=8)
+            tope = max(values) or 1
+            canvas.axes.set_ylim(0, tope * 1.25)
+            for bar, clase in zip(bars, ("X", "Y", "Z")):
+                promedio = (sum(cvs[clase]) / len(cvs[clase])) if cvs[clase] else 0.0
+                canvas.axes.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + tope * 0.04,
+                    f"CV {promedio:.2f}" if cvs[clase] else "—",
+                    ha="center", fontsize=9, color=styles.MUTED)
         canvas.redraw()
         card.layout().addWidget(canvas)
         return card

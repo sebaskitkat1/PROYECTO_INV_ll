@@ -50,11 +50,12 @@ seguridad. También es idempotente.
 | `v_ventas_diarias_origen` (serie diaria por `origen`) | Pronóstico (reales vs simuladas) |
 | `v_ventas_por_producto` (categoría como dato) | Ventas |
 | `v_tendencia_producto` (30d vs 30d previos) | Ventas |
-| `v_estado_inventario` (estado, consumo, días, lead time, punto de reorden, `sin_minimo`) | Inventario |
+| `ventas` + `detalle_ventas` filtradas por fecha/producto/origen | Reporte por producto y periodo |
+| `v_estado_inventario` (estado, consumo, merma, días, lead time, punto de reorden, `sin_minimo`) | Inventario (tabla, ABC/XYZ, merma) |
 | `v_orden_compra_sugerida` (sugerido con cobertura, proveedor y costo) | Inventario (columna Sugerido), botón orden de compra, Compras |
 | `v_pareto_abc` (cortes A/B desde parámetros) | Gráfica ABC |
 | `v_lotes_por_caducar` | Alerta de caducidad |
-| `v_productos_temporada`, `v_vida_util_clima` | Compras (qué pedir según mes y calor) |
+| `v_productos_temporada`, `v_vida_util_clima` | Compras (qué pedir según mes y calor), Inventario (tarjeta Riesgo calor) |
 | `ventas` + `detalle_ventas` (cabecera y renglones) | Caja (registro de venta) |
 | `ordenes_compra`, `detalle_ordenes_compra`, `proveedores` | Compras (lista y detalle) |
 | `pronosticos` + `pronostico_diario` + `pronostico_producto` | Pronóstico (botón Guardar) |

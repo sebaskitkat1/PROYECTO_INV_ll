@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 105 pruebas
+python -m unittest discover tests   # 110 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -155,7 +155,7 @@ app/
   data/
     mock_data.py          Datos de ejemplo: frutas, verduras y jugos (listas de dicts)
     store.py              Datos compartidos en memoria (sobrevive a la navegación)
-    analytics.py          Cálculos: totales, KPIs, ABC, pronóstico (solo stdlib)
+    analytics.py          Cálculos: totales, KPIs, ABC/XYZ y pronóstico (solo stdlib)
     app_state.py          Sesión: usuario, rol y sucursal actuales
     roles.py              Permisos por rol (admin, gerente, cajero)
     params.py             Umbrales por defecto y parseo de parametros_sistema
@@ -174,7 +174,7 @@ app/
     dashboard_screen.py   Hoy, KPIs y 3 gráficas con vista previa ampliable
     pos_screen.py         Caja: catálogo, ticket y registro de venta
     sales_screen.py       Filtro por categoría, buscador, tabla e ingresos por categoría
-    inventory_screen.py   Stock editable, alertas, caducidad y ABC real
+    inventory_screen.py   Stock editable, alertas, caducidad, merma y ABC/XYZ
     purchases_screen.py   Órdenes de compra, detalle y recepción
     prediction_screen.py  Histórico vs pronóstico 30 días y guardado
     bitacora_screen.py    Accesos consultables (solo Administrador)
@@ -246,14 +246,23 @@ requirements-dev.txt      Dependencias de desarrollo y build
   Snacks y Abarrotes) + buscador, tabla con orden numérico y por texto sin
   acentos, y gráfica de ingresos por categoría (legible con 66 productos).
   Exporta a CSV que Excel abre bien. El status muestra totales y fuente.
+  Incluye un **reporte por producto y periodo**: se eligen uno o varios
+  productos (vacío = todos), fecha desde/hasta y origen (todos, real o
+  simulado). Muestra totales de unidades, ingresos y margen, la evolución
+  diaria en una gráfica y el detalle por producto en tabla; el botón
+  Exportar CSV guarda ese detalle con el mismo formato seguro para Excel.
 - **Inventario:** stock editable con doble clic (decimales en kg/L, enteros
   en pzas; con base guarda en kardex), estado y cobertura recalculados con
   umbrales de `parametros_sistema`, alerta de críticos + alerta de lotes
   por caducar con purga, orden de compra con cantidad sugerida, cobertura
-  de los 10 ingredientes más urgentes y distribución ABC (A/B/C) con cortes
-  configurables. El consumo diario usa los días con venta (no un divisor
-  fijo de 30) y suma merma/caducidad; la columna **Sugerido** y el punto de
-  reorden incluyen el lead time del proveedor y días de stock de seguridad.
+  de los 10 ingredientes más urgentes, distribución ABC (A/B/C) con cortes
+  configurables y variabilidad XYZ de la demanda (X estable, Y media,
+  Z errática) sobre 90 días. La tabla muestra la **merma** de la ventana de
+  consumo y la tarjeta **Riesgo calor** cuenta los productos sin
+  refrigeración que el clima del mes puede dañar. El consumo diario usa los
+  días con venta (no un divisor fijo de 30) y suma merma/caducidad; la
+  columna **Sugerido** y el punto de reorden incluyen el lead time del
+  proveedor y días de stock de seguridad.
   Con base, el botón genera las órdenes con `sp_generar_ordenes_compra`;
   sin conexión exporta el CSV con consumo, lead time y punto de reorden.
 - **Compras:** lista las órdenes por estado, muestra proveedor, fecha, total
@@ -280,8 +289,5 @@ requirements-dev.txt      Dependencias de desarrollo y build
 2. Respaldo/restauración de MySQL y validación de recepción de compras
    end-to-end en un equipo destino.
 3. Impresión de ticket y corte de caja para la operación diaria.
-4. **Reportes de ventas para visualización (pendiente):** el Administrador
-   podrá elegir uno o varios productos y un periodo con fecha desde/hasta,
-   y consultar el reporte en pantalla (gráfica y totales) o exportarlo a
-   CSV. Debe distinguir ventas reales de simuladas y respetar los filtros
-   de origen; el CSV conserva el formato seguro para Excel.
+4. Reporte de ventas con comparación contra el mismo periodo del año
+   anterior y programación de envíos automáticos.

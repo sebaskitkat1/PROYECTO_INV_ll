@@ -202,6 +202,66 @@ def abc_summary(clases: list[dict]) -> list[dict]:
     return resumen
 
 
+# -- XYZ (variabilidad de la demanda) -----------------------------------
+
+XYZ_CORTE_X = 0.5
+XYZ_CORTE_Y = 1.0
+
+
+def xyz_class(serie: list[float]) -> dict:
+    """Clasifica la demanda diaria por coeficiente de variacion (CV).
+
+    X: demanda estable (CV <= 0.5), Y: media (CV <= 1.0), Z: erratica.
+    La serie debe traer un valor por dia del periodo (0 en dias sin venta):
+    los ceros cuentan porque la intermitencia tambien es variabilidad.
+    """
+    valores = [float(v or 0) for v in serie]
+    n = len(valores)
+    if n == 0:
+        return {"clase": "—", "cv": None, "media": 0.0, "desv": 0.0, "n": 0}
+    media = sum(valores) / n
+    if media <= 0:
+        return {"clase": "—", "cv": None, "media": 0.0, "desv": 0.0, "n": n}
+    var = sum((v - media) ** 2 for v in valores) / n
+    desv = math.sqrt(var)
+    cv = desv / media
+    clase = "X" if cv <= XYZ_CORTE_X else ("Y" if cv <= XYZ_CORTE_Y else "Z")
+    return {"clase": clase, "cv": cv, "media": media, "desv": desv, "n": n}
+
+
+def abc_xyz_matrix(abc: list[dict], xyz: dict[str, dict]) -> list[dict]:
+    """Cruza la clase ABC (ingresos) con XYZ (variabilidad) por producto."""
+    celdas: dict[tuple[str, str], dict] = {
+        (a, x): {"abc": a, "xyz": x, "productos": [], "ingresos": 0.0}
+        for a in ("A", "B", "C") for x in ("X", "Y", "Z")}
+    for fila in abc:
+        clase_a = str(fila.get("clase") or "C")
+        if clase_a not in ("A", "B", "C"):
+            continue
+        nombre = str(fila.get("nombre") or "")
+        clase_x = str((xyz.get(nombre) or {}).get("clase") or "—")
+        if clase_x not in ("X", "Y", "Z"):
+            continue
+        celda = celdas[(clase_a, clase_x)]
+        celda["productos"].append(nombre)
+        celda["ingresos"] += float(fila.get("ingresos") or 0)
+    return [celdas[(a, x)] for a in ("A", "B", "C") for x in ("X", "Y", "Z")]
+
+
+def report_daily_series(rows: list[dict]) -> list[dict]:
+    """Agrega filas {fecha, cantidad, ingresos} por dia, ordenadas."""
+    acumulado: dict[str, dict] = {}
+    for r in rows:
+        fecha = str(r.get("fecha") or "")
+        if not fecha:
+            continue
+        acc = acumulado.setdefault(
+            fecha, {"fecha": fecha, "cantidad": 0.0, "ingresos": 0.0})
+        acc["cantidad"] += float(r.get("cantidad") or 0)
+        acc["ingresos"] += float(r.get("ingresos") or 0)
+    return [acumulado[f] for f in sorted(acumulado)]
+
+
 # -- pronostico ----------------------------------------------------------
 # regresion sobre fecha real (ordinal de la fecha, no posicion).
 # nivel = valor ajustado en el ultimo punto: f(1) cae un paso de

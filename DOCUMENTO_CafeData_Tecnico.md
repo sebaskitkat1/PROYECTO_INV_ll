@@ -242,6 +242,13 @@ Pantalla `bitacora_screen.py` (solo Administrador): fecha, usuario, correo, resu
 * Alerta de críticos + lotes por caducar.
 * Distribución ABC por clase (A/B/C) con cortes configurables
   (`abc_corte_a`, `abc_corte_b`); la tabla conserva el detalle por producto.
+* Variabilidad XYZ por coeficiente de variación (CV) de la demanda diaria a
+  90 días: X estable (CV ≤ 0.5), Y media (CV ≤ 1.0), Z errática. La serie
+  incluye los días sin venta como cero, así la intermitencia también cuenta.
+  `abc_xyz_matrix` cruza ambas clases por producto.
+* Merma de la ventana (`v_estado_inventario.merma_ventana`) visible en la
+  tabla; `v_vida_util_clima` alimenta la tarjeta **Riesgo calor** con los
+  productos sin refrigeración que el clima del mes puede dañar.
 * Cobertura de los 10 ingredientes más urgentes (el resto queda en la tabla).
 * Orden de compra con cantidad sugerida (`v_orden_compra_sugerida`):
   objetivo = `max(stock_minimo * objetivo_reorden, consumo_diario *
@@ -253,6 +260,23 @@ Pantalla `bitacora_screen.py` (solo Administrador): fecha, usuario, correo, resu
 Filtro por categoría + buscador, tabla ordenable y gráfica de ingresos por
 categoría (6 barras legibles aun con 66 productos). La dispersión anterior
 se retiró porque se amontonaba con el catálogo completo.
+
+### 7.4 Reporte de ventas por producto y periodo
+
+`repository.sales_report(desde, hasta, productos, origen)` consulta
+`detalle_ventas` + `ventas` + `productos` en el rango de fechas y devuelve:
+
+* `por_producto`: nombre, categoría, unidades, ingresos y margen %.
+* `por_dia`: unidades e ingresos por día (solo días con venta).
+* `totales`: unidades, ingresos, precio promedio y margen ponderado.
+
+La pantalla de Ventas agrega una tarjeta para elegir uno o varios productos
+(lista con casillas; vacío = todos), fecha desde/hasta y origen (todos,
+`real` o `simulado`). Al pulsar **Ver reporte** muestra los totales, una
+gráfica de evolución diaria y la tabla por producto; **Exportar CSV** guarda
+ese detalle con `export_csv` (UTF-8 con BOM y anti-fórmulas). En modo
+ejemplo el reporte se arma con los datos de muestra y se etiqueta como
+`ejemplo`.
 
 ### 7.4 Compras
 
@@ -366,9 +390,9 @@ Ver sección 13.
 
 ## 11. Calidad, tests y limitaciones
 
-### Tests (105 en verde)
+### Tests (110 en verde)
 
-`unittest discover tests` cubre: inventario, stock, pronóstico, persistencia, repositorio, roles, órdenes, POS, params, simulación, gráficas y UI.
+`unittest discover tests` cubre: inventario, stock, pronóstico, persistencia, repositorio, roles, órdenes, POS, params, simulación, gráficas, XYZ, reporte de ventas y UI.
 
 ### Lint y tipos
 
@@ -384,19 +408,18 @@ Ver sección 13.
   cobertura se calcula sobre los días que sí tienen datos. La merma se
   reparte entre la ventana para no convertir un evento aislado en consumo
   diario permanente.
-* El stock de seguridad es por días de consumo, no por variabilidad
-  estadística (XYZ); queda para una fase posterior.
+* La clasificación XYZ ya existe, pero el stock de seguridad sigue siendo
+  por días de consumo, no por desviación estadística. Usar XYZ para ajustar
+  el colchón queda como mejora.
+* El reporte de ventas solo compara el periodo elegido; aún no hay
+  comparación contra el mismo periodo del año anterior.
 
 ### Pendientes de producto
 
-**Reportes de ventas para visualización (no implementado).** El Administrador
-debe poder elegir uno o varios productos y un periodo (fecha desde/hasta) y
-obtener un reporte de ventas. La salida debe incluir una vista en pantalla
-con gráfica y totales, y una exportación a CSV con el mismo formato seguro
-para Excel que usa la app. El reporte debe respetar el filtro de origen
-(real/simulado) y mostrar unidades, ingresos, margen y evolución diaria o
-por producto. Queda pendiente de diseño de UI y de la consulta SQL
-correspondiente.
+**Comparación interanual y envío programado de reportes.** El reporte por
+producto y periodo ya está implementado (sección 7.4). Siguen pendientes la
+comparación contra el mismo periodo del año anterior y el envío automático
+del CSV por correo o carpeta compartida.
 
 ---
 
@@ -488,7 +511,7 @@ app/
   data/
     mock_data.py          Datos de ejemplo
     store.py              Datos compartidos en memoria
-    analytics.py          Cálculos: totales, KPIs, ABC, pronóstico (stdlib)
+    analytics.py          Cálculos: totales, KPIs, ABC/XYZ y pronóstico (stdlib)
     app_state.py          Sesión: usuario, rol y sucursal
     roles.py              Permisos por rol
     params.py             Umbrales por defecto y parseo
