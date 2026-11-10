@@ -9,6 +9,7 @@ __pycache__/
 *.sqlite
 *.log
 .env
+DOCUMENTO_CafeData_Tecnico.*
 build/
 dist/
 scripts/simulacion/resultados/
