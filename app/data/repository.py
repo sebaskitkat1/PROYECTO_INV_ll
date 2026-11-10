@@ -138,6 +138,9 @@ def map_venta_row(r: dict) -> dict:
 def map_inventario_row(r: dict) -> dict:
     dias = r.get("dias_agotar")
     consumo = r.get("consumo_diario")
+    lead = r.get("lead_time_dias")
+    punto = r.get("punto_reorden")
+    sugerido = r.get("sugerido")
     return {"id_ingrediente": int(r["id_ingrediente"]),
             "nombre": str(r["nombre"]),
             "unidad": str(r.get("unidad") or "kg"),
@@ -145,7 +148,12 @@ def map_inventario_row(r: dict) -> dict:
             "stockMinimo": float(r.get("stock_minimo") or 0),
             "diasAgotar": None if dias is None else float(dias),
             "estado": str(r.get("estado") or "optimo"),
-            "consumoDiario": None if consumo is None else float(consumo)}
+            "consumoDiario": None if consumo is None else float(consumo),
+            "leadTimeDias": None if lead is None else float(lead),
+            "puntoReorden": None if punto is None else float(punto),
+            "stockSeguridad": float(r.get("stock_seguridad") or 0),
+            "sugerido": None if sugerido is None else int(sugerido),
+            "proveedor": str(r.get("proveedor") or "")}
 
 
 def sales_last_7_days() -> list[dict]:
@@ -196,9 +204,15 @@ def sales_detail_last_days(days: int = 30, origen: str | None = None) -> list[di
 def inventory_rows() -> list[dict]:
     _hay_base()
     filas = db.fetchall(
-        "SELECT id_ingrediente, nombre, unidad, stock_actual, stock_minimo, "
-        "consumo_diario, dias_agotar, estado FROM v_estado_inventario "
-        "WHERE id_sucursal = %s", (sucursal_id(),))
+        "SELECT e.id_ingrediente, e.nombre, e.unidad, e.stock_actual, "
+        "e.stock_minimo, e.consumo_diario, e.dias_agotar, e.estado, "
+        "e.lead_time_dias, e.punto_reorden, e.stock_seguridad, "
+        "o.sugerido, o.proveedor "
+        "FROM v_estado_inventario e "
+        "LEFT JOIN v_orden_compra_sugerida o "
+        "  ON o.id_sucursal = e.id_sucursal "
+        " AND o.id_ingrediente = e.id_ingrediente "
+        "WHERE e.id_sucursal = %s", (sucursal_id(),))
     return [map_inventario_row(r) for r in filas]
 
 

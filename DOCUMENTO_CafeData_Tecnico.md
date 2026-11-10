@@ -220,12 +220,21 @@ Pantalla `bitacora_screen.py` (solo Administrador): fecha, usuario, correo, resu
 ### 7.2 Inventario
 
 * Estado: óptimo / advertencia / crítico / sin mínimo.
+* Consumo diario: ventas de recetas / días con venta + merma y caducidad /
+  ventana de consumo (`ventana_consumo_dias`, 30 por defecto). Ya no se
+  divide entre 30 fijo: con pocos días de datos el consumo no se subestima.
 * Cobertura: `dias_agotar = stock / consumo_diario`.
+* Lead time: `proveedores.dias_entrega` del proveedor principal o
+  `lead_time_default`; punto de reorden =
+  `max(stock_minimo, consumo_diario * (lead_time + dias_seguridad))`.
 * Alerta de críticos + lotes por caducar.
 * Distribución ABC por clase (A/B/C) con cortes configurables
   (`abc_corte_a`, `abc_corte_b`); la tabla conserva el detalle por producto.
 * Cobertura de los 10 ingredientes más urgentes (el resto queda en la tabla).
-* Orden de compra con cantidad sugerida (`v_orden_compra_sugerida`).
+* Orden de compra con cantidad sugerida (`v_orden_compra_sugerida`):
+  objetivo = `max(stock_minimo * objetivo_reorden, consumo_diario *
+  (lead_time + dias_seguridad + dias_cobertura))`, menos stock y pedidos
+  pendientes. La tabla muestra la columna **Sugerido**.
 
 ### 7.3 Ventas: filtros e ingresos por categoría
 
@@ -235,7 +244,7 @@ se retiró porque se amontonaba con el catálogo completo.
 
 ### 7.4 Compras
 
-Lista órdenes por estado, muestra proveedor, fecha, total y detalle. Genera sugeridas y recibe con `sp_recibir_orden_compra`.
+Lista órdenes por estado, muestra proveedor, fecha, total y detalle. Genera sugeridas y recibe con `sp_recibir_orden_compra`. La sugerencia descuenta pedidos abiertos y cubre lead time del proveedor, stock de seguridad y cobertura objetivo; si no hay proveedor principal, usa `lead_time_default` y no crea orden para ese ingrediente.
 
 ---
 
@@ -345,7 +354,7 @@ Ver sección 13.
 
 ## 11. Calidad, tests y limitaciones
 
-### Tests (102 en verde)
+### Tests (104 en verde)
 
 `unittest discover tests` cubre: inventario, stock, pronóstico, persistencia, repositorio, roles, órdenes, POS, params, simulación, gráficas y UI.
 
@@ -359,6 +368,12 @@ Ver sección 13.
   litros fraccionados además de piezas enteras.
 * Clima de `clima_torreon` son promedios de referencia.
 * Pronóstico lineal simple.
+* El consumo diario usa días con venta; si la simulación deja huecos, la
+  cobertura se calcula sobre los días que sí tienen datos. La merma se
+  reparte entre la ventana para no convertir un evento aislado en consumo
+  diario permanente.
+* El stock de seguridad es por días de consumo, no por variabilidad
+  estadística (XYZ); queda para una fase posterior.
 
 ### Pendientes de producto
 
@@ -389,7 +404,7 @@ correspondiente.
 
 ### Migraciones
 
-`migrate_ordenes_pendientes.sql`, `migrate_catalogo_pos.sql`, `migrate_fix_totales_ventas.sql`, `migrate_cantidades_decimales.sql`, `migrate_inventario_recetas.sql`, `migrate_kpi_precio_unidad.sql`, `migrate_fase0.sql`.
+`migrate_ordenes_pendientes.sql`, `migrate_catalogo_pos.sql`, `migrate_fix_totales_ventas.sql`, `migrate_cantidades_decimales.sql`, `migrate_inventario_recetas.sql`, `migrate_kpi_precio_unidad.sql`, `migrate_fase0.sql`, `migrate_fase2.sql`.
 
 ---
 
@@ -425,7 +440,8 @@ El modelo de DA necesita datos frescos cada día. El cajero automático simula l
 - MySQL (servicio `MySQL80`) disponible al encender.
 - Usuario `Cajero Demo` (id 2) y Administrador (id 1) en la base.
 - Python 3.10+ con dependencias.
-- Migración `migrate_fase0.sql` aplicada (columna `ventas.origen`).
+- Migraciones `migrate_fase0.sql` (columna `ventas.origen`) y
+  `migrate_fase2.sql` (consumo, lead time y seguridad) aplicadas.
 
 ### 13.5 Cómo ver los resultados
 

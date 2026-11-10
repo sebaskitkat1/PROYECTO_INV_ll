@@ -8,6 +8,11 @@ DEFAULTS: dict[str, float] = {
     "dias_alerta_agotar": 5.0,
     "abc_corte_a": 80.0,
     "abc_corte_b": 95.0,
+    # Fase 2: consumo, lead time y stock de seguridad.
+    "ventana_consumo_dias": 30.0,
+    "lead_time_default": 2.0,
+    "dias_seguridad": 1.0,
+    "dias_cobertura": 7.0,
 }
 
 

@@ -1,5 +1,7 @@
 -- Actualiza una base existente sin borrar datos.
 -- Evita que "Generar órdenes" duplique pedidos abiertos.
+-- NOTA: migrate_fase2.sql reemplaza esta vista con consumo real, lead time
+-- y stock de seguridad. Aplica también esa migración.
 USE frutidata;
 
 CREATE OR REPLACE VIEW v_orden_compra_sugerida AS

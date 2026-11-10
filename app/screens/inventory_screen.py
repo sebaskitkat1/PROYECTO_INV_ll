@@ -203,14 +203,16 @@ class InventoryScreen(QWidget):
     def _refresh_summary_and_alert(self) -> None:
         # cuentas desde la lista compartida, asi valen lo editado
         health = analytics.inventory_health(self.inventory)
+        por_pedir = [i for i in self.inventory if self._sugerido_row(i) > 0]
+        por_pedir.sort(key=lambda i: (float(i.get("diasAgotar") or 0), i["nombre"]))
         self.lbl_total.setText(str(health["total"]))
         self.lbl_optimo.setText(str(health["optimo"]))
-        self.lbl_riesgo.setText(str(health["critico"]))
-        if health["critico"]:
-            criticos = health["criticos"]
+        self.lbl_riesgo.setText(str(len(por_pedir)))
+        if por_pedir:
+            nombres = [i["nombre"] for i in por_pedir]
             self.alert_label.setText(
-                f"{health['critico']} por pedir: {', '.join(criticos[:4])}"
-                + ("…" if len(criticos) > 4 else "")
+                f"{len(por_pedir)} por pedir: {', '.join(nombres[:4])}"
+                + ("…" if len(nombres) > 4 else "")
                 + " · Conviene pedir hoy."
             )
             self.alert_banner.setVisible(True)
@@ -239,8 +241,27 @@ class InventoryScreen(QWidget):
         row.addStretch()
         return row
 
+    def _sugerido_row(self, row: dict) -> int:
+        """Cantidad sugerida: usa la vista si existe; si no, la formula local."""
+        if row.get("sugerido") is not None:
+            return int(row["sugerido"])
+        if row.get("estado") == "sin_minimo":
+            return 0
+        lead = row.get("leadTimeDias")
+        if lead is None:
+            lead = self.params.get("lead_time_default", 2.0)
+        seguridad = self.params.get("dias_seguridad", 1.0)
+        punto = analytics.reorder_point(row, lead, seguridad)
+        if row.get("estado") not in ("critico", "advertencia") and \
+                float(row.get("stockActual") or 0) > punto:
+            return 0
+        return analytics.reorder_qty(
+            row, self.params.get("objetivo_reorden", 2.0),
+            lead_time=lead, dias_seguridad=seguridad,
+            dias_cobertura=self.params.get("dias_cobertura", 7.0))
+
     def _export_order(self) -> None:
-        bajos = [i for i in self.inventory if i["estado"] in ("critico", "advertencia")]
+        bajos = [i for i in self.inventory if self._sugerido_row(i) > 0]
         if not bajos:
             QMessageBox.information(self, "Orden de compra", "No hay productos por pedir.")
             return
@@ -266,15 +287,18 @@ class InventoryScreen(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Guardar orden de compra", "orden_compra.csv", "CSV (*.csv)")
         if not path:
             return
-        # cantidad sugerida = llevar el stock al doble del minimo
+        # El sugerido cubre lead time + seguridad + cobertura objetivo.
         filas = []
         for r in sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]):
-            fila = {k: r.get(k, "") for k in ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado"]}
-            fila["sugerido"] = analytics.reorder_qty(r, self.params["objetivo_reorden"])
+            fila = {k: r.get(k, "") for k in
+                    ["nombre", "stockActual", "stockMinimo", "consumoDiario",
+                     "diasAgotar", "puntoReorden", "leadTimeDias", "estado"]}
+            fila["sugerido"] = self._sugerido_row(r)
             filas.append(fila)
         try:
             n = export_csv.guardar_csv(
-                path, ["nombre", "stockActual", "stockMinimo", "diasAgotar", "estado", "sugerido"], filas)
+                path, ["nombre", "stockActual", "stockMinimo", "consumoDiario",
+                       "diasAgotar", "puntoReorden", "leadTimeDias", "estado", "sugerido"], filas)
         except export_csv.ExportError as e:
             QMessageBox.warning(self, "Orden de compra", str(e))
             return
@@ -289,9 +313,13 @@ class InventoryScreen(QWidget):
     # -- tabla -----------------------------------------------------------
 
     def _build_table(self) -> QTableWidget:
-        columns = ["Nombre Producto", "Stock Actual", "Stock Mínimo", "Días Para Agotar", "Estado"]
+        columns = ["Nombre Producto", "Stock Actual", "Stock Mínimo",
+                   "Días Para Agotar", "Estado", "Sugerido"]
         table = QTableWidget(0, len(columns))
         table.setHorizontalHeaderLabels(columns)
+        table.horizontalHeaderItem(5).setToolTip(
+            "Cantidad sugerida = cobertura objetivo - stock - pedidos pendientes.\n"
+            "Incluye lead time del proveedor y días de stock de seguridad.")
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.DoubleClicked | QTableWidget.AnyKeyPressed)
         table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -328,6 +356,13 @@ class InventoryScreen(QWidget):
             else:
                 dias_item = NumericItem(self._fmt_dias(float(dias), row.get("unidad")), float(dias))
             dias_item.setFlags(dias_item.flags() & ~Qt.ItemIsEditable)
+            consumo = row.get("consumoDiario")
+            lead = row.get("leadTimeDias")
+            punto = row.get("puntoReorden")
+            dias_item.setToolTip(
+                f"Consumo diario: {analytics.fmt_qty(float(consumo or 0))} · "
+                f"Lead time: {analytics.fmt_qty(float(lead or 0))} d · "
+                f"Punto de reorden: {analytics.fmt_qty(float(punto or 0))}")
             if dias is not None and dias <= self.params["dias_alerta_agotar"]:
                 dias_item.setForeground(QColor(styles.DANGER))
                 font = dias_item.font()
@@ -346,6 +381,16 @@ class InventoryScreen(QWidget):
             estado_item.setFont(font)
             estado_item.setFlags(estado_item.flags() & ~Qt.ItemIsEditable)
             tbl.setItem(r, 4, estado_item)
+
+            sugerido = self._sugerido_row(row)
+            sugerido_item = NumericItem(str(sugerido), sugerido)
+            sugerido_item.setFlags(sugerido_item.flags() & ~Qt.ItemIsEditable)
+            if sugerido > 0:
+                sugerido_item.setForeground(QColor(styles.CLAY))
+                font = sugerido_item.font()
+                font.setBold(True)
+                sugerido_item.setFont(font)
+            tbl.setItem(r, 5, sugerido_item)
 
         tbl.setMinimumHeight(min(40 * len(rows) + 40, 300) if rows else 120)
         tbl.resizeColumnsToContents()

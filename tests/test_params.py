@@ -12,10 +12,14 @@ class TestDefaults(unittest.TestCase):
     def test_claves_esperadas(self):
         d = params.defaults()
         for clave in ("umbral_advertencia", "objetivo_reorden", "alerta_caducidad_dias",
-                      "dias_alerta_agotar", "abc_corte_a", "abc_corte_b"):
+                      "dias_alerta_agotar", "abc_corte_a", "abc_corte_b",
+                      "ventana_consumo_dias", "lead_time_default",
+                      "dias_seguridad", "dias_cobertura"):
             self.assertIn(clave, d)
         self.assertEqual(d["umbral_advertencia"], 1.25)
         self.assertEqual(d["objetivo_reorden"], 2.0)
+        self.assertEqual(d["lead_time_default"], 2.0)
+        self.assertEqual(d["dias_seguridad"], 1.0)
 
     def test_parse_sobrescribe_y_ignora_basura(self):
         out = params.parse([
@@ -41,6 +45,14 @@ class TestReglasConParametros(unittest.TestCase):
         item = {"stockActual": 5, "stockMinimo": 10}
         self.assertEqual(analytics.reorder_qty(item), 15)
         self.assertEqual(analytics.reorder_qty(item, objetivo=3.0), 25)
+
+    def test_reorder_con_consumo_y_lead_time(self):
+        item = {"stockActual": 5, "stockMinimo": 10, "consumoDiario": 2}
+        # 2 unidades/dia x (2 lead + 1 seguridad + 7 cobertura) = 20
+        self.assertEqual(analytics.reorder_qty(item), 15)
+        self.assertEqual(analytics.reorder_qty(item, lead_time=4), 19)
+        self.assertEqual(analytics.reorder_point(item), 10)
+        self.assertEqual(analytics.reorder_point(item, lead_time=4, dias_seguridad=2), 12)
 
     def test_abc_con_cortes_custom(self):
         pareto = [{"nombre": "A", "ingresos": 50}, {"nombre": "B", "ingresos": 50}]

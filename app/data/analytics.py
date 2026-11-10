@@ -129,9 +129,43 @@ def daily_use(item: dict) -> float:
     return float(item.get("stockActual") or 0) / dias
 
 
-def reorder_qty(item: dict, objetivo: float = 2.0) -> int:
-    falta = float(item.get("stockMinimo") or 0) * objetivo - float(item.get("stockActual") or 0)
-    return max(0, math.ceil(falta))
+def reorder_point(item: dict, lead_time: float = 2.0,
+                  dias_seguridad: float = 1.0) -> float:
+    """Punto de reorden: minimo manual o consumo durante lead time + seguridad.
+
+    Sin consumo conocido solo aplica el minimo, igual que antes. Con consumo,
+    el punto crece con el tiempo de entrega y los dias de colchon.
+    """
+    consumo = float(item.get("consumoDiario") or 0)
+    minimo = float(item.get("stockMinimo") or 0)
+    lead = 2.0 if lead_time is None else float(lead_time)
+    seguridad = 1.0 if dias_seguridad is None else float(dias_seguridad)
+    if consumo <= 0:
+        return minimo
+    return max(minimo, consumo * (lead + seguridad))
+
+
+def reorder_qty(item: dict, objetivo: float = 2.0, *,
+                lead_time: float = 2.0, dias_seguridad: float = 1.0,
+                dias_cobertura: float = 7.0) -> int:
+    """Cantidad sugerida para cubrir lead time, seguridad y cobertura.
+
+    Sin consumo usa la regla historica (minimo x objetivo - stock). Con
+    consumo toma el mayor entre esa regla y los dias de cobertura, para no
+    pedir de menos cuando el minimo quedo viejo.
+    """
+    stock = float(item.get("stockActual") or 0)
+    minimo = float(item.get("stockMinimo") or 0)
+    consumo = float(item.get("consumoDiario") or 0)
+    objetivo = 2.0 if objetivo is None else float(objetivo)
+    lead = 2.0 if lead_time is None else float(lead_time)
+    seguridad = 1.0 if dias_seguridad is None else float(dias_seguridad)
+    cobertura = 7.0 if dias_cobertura is None else float(dias_cobertura)
+    if consumo > 0:
+        nivel = max(minimo * objetivo, consumo * (lead + seguridad + cobertura))
+    else:
+        nivel = minimo * objetivo
+    return max(0, math.ceil(nivel - stock))
 
 
 def abc_classes(pareto: list[dict], corte_a: float = 80.0,

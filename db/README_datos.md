@@ -17,6 +17,7 @@ mysql -u root -p < db/migrate_cantidades_decimales.sql
 mysql -u root -p < db/migrate_inventario_recetas.sql
 mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 mysql -u root -p < db/migrate_fase0.sql
+mysql -u root -p < db/migrate_fase2.sql
 ```
 
 `migrate_catalogo_pos.sql` deja 66 productos activos en 6 categorías.
@@ -33,6 +34,12 @@ sea ingresos / unidades vendidas, no ingresos / tickets.
 por origen y fecha, `pronosticos.wape_modelo`/`sesgo_modelo` y la vista
 `v_ventas_diarias_origen`. Las ventas que ya existían quedan como simuladas.
 Es idempotente.
+`migrate_fase2.sql` agrega los parámetros de consumo (`ventana_consumo_dias`,
+`lead_time_default`, `dias_seguridad`, `dias_cobertura`) y reemplaza
+`v_estado_inventario`/`v_orden_compra_sugerida`: el consumo diario divide
+entre los días con venta (no entre 30 fijo), suma merma/caducidad y el
+sugerido incluye el lead time del proveedor principal y el stock de
+seguridad. También es idempotente.
 
 ## Mapeo vista ↔ pantalla
 
@@ -43,8 +50,8 @@ Es idempotente.
 | `v_ventas_diarias_origen` (serie diaria por `origen`) | Pronóstico (reales vs simuladas) |
 | `v_ventas_por_producto` (categoría como dato) | Ventas |
 | `v_tendencia_producto` (30d vs 30d previos) | Ventas |
-| `v_estado_inventario` (estado, consumo, días, `sin_minimo`) | Inventario |
-| `v_orden_compra_sugerida` (+ proveedor y costo) | Botón orden de compra, Compras |
+| `v_estado_inventario` (estado, consumo, días, lead time, punto de reorden, `sin_minimo`) | Inventario |
+| `v_orden_compra_sugerida` (sugerido con cobertura, proveedor y costo) | Inventario (columna Sugerido), botón orden de compra, Compras |
 | `v_pareto_abc` (cortes A/B desde parámetros) | Gráfica ABC |
 | `v_lotes_por_caducar` | Alerta de caducidad |
 | `v_productos_temporada`, `v_vida_util_clima` | Compras (qué pedir según mes y calor) |
@@ -70,13 +77,22 @@ Es idempotente.
 - `pronosticos` guarda `mae_*`, `wape_modelo` y `sesgo_modelo`; WAPE y sesgo
   pueden ser NULL si el backtest no tuvo datos suficientes.
 - `estado` incluye `sin_minimo`; `dias_agotar` puede ser NULL ("—").
+- `consumo_diario` = ventas de recetas / días con venta + merma/caducidad /
+  ventana de consumo. Un día sin venta no cuenta como cero; la merma se
+  reparte entre la ventana para no inflar un evento aislado.
+- `lead_time_dias` sale de `proveedores.dias_entrega` del proveedor principal;
+  si no hay principal usa `lead_time_default`.
+- `punto_reorden = max(stock_minimo, consumo_diario * (lead_time + dias_seguridad))`.
 - `ordenes_compra.estado` usa `borrador`, `enviada`, `recibida` o `cancelada`;
   solo se reciben las dos primeras. `sp_recibir_orden_compra` recibe todo
   cuando `cantidad_recibida` es NULL y registra el kardex.
 - `v_orden_compra_sugerida` descuenta lo pendiente de órdenes abiertas
-  (`borrador`/`enviada`), así generar dos veces no duplica pedidos.
+  (`borrador`/`enviada`), así generar dos veces no duplica pedidos. El
+  objetivo es `max(stock_minimo * objetivo_reorden, consumo_diario *
+  (lead_time + dias_seguridad + dias_cobertura))`.
 - Umbrales en `parametros_sistema` (`umbral_advertencia`, `objetivo_reorden`,
   `alerta_caducidad_dias`, `dias_alerta_agotar`, `abc_corte_a/b`,
-  `factor_calor_35/30`); la app los lee al abrir inventario y usa defaults
-  equivalentes si no hay base.
+  `ventana_consumo_dias`, `lead_time_default`, `dias_seguridad`,
+  `dias_cobertura`, `factor_calor_35/30`); la app los lee al abrir
+  inventario y usa defaults equivalentes si no hay base.
 - Clima de `clima_torreon` son promedios de referencia, no medición en vivo.

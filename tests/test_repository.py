@@ -23,7 +23,24 @@ class TestMapeo(unittest.TestCase):
                                            "estado": "sin_minimo"})
         self.assertIsNone(r["diasAgotar"])
         self.assertIsNone(r["consumoDiario"])
+        self.assertIsNone(r["leadTimeDias"])
+        self.assertIsNone(r["puntoReorden"])
+        self.assertIsNone(r["sugerido"])
+        self.assertEqual(r["stockSeguridad"], 0.0)
         self.assertEqual(r["estado"], "sin_minimo")
+
+    def test_inventario_con_sugerido(self):
+        r = repository.map_inventario_row({
+            "id_ingrediente": 2, "nombre": "Z", "unidad": "kg",
+            "stock_actual": 3, "stock_minimo": 5, "consumo_diario": 1.5,
+            "dias_agotar": 2, "estado": "critico", "lead_time_dias": 2,
+            "punto_reorden": 5, "stock_seguridad": 1.5,
+            "sugerido": 9, "proveedor": "Proveedor"})
+        self.assertEqual(r["leadTimeDias"], 2.0)
+        self.assertEqual(r["puntoReorden"], 5.0)
+        self.assertEqual(r["stockSeguridad"], 1.5)
+        self.assertEqual(r["sugerido"], 9)
+        self.assertEqual(r["proveedor"], "Proveedor")
 
     def test_etiqueta_fuente_ejemplo(self):
         self.assertEqual(repository.etiqueta_fuente(), "ejemplo")

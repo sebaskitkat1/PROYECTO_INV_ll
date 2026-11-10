@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 102 pruebas
+python -m unittest discover tests   # 104 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -63,6 +63,7 @@ mysql -u root -p < db/migrate_cantidades_decimales.sql
 mysql -u root -p < db/migrate_inventario_recetas.sql
 mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 mysql -u root -p < db/migrate_fase0.sql
+mysql -u root -p < db/migrate_fase2.sql
 # 2. Copiar .env.example como .env y poner tus valores (nunca se sube)
 # 3. Datos de prueba:  CALL sp_generar_ventas_demo(60);
 # 4. Dar de alta tu contraseña:
@@ -71,7 +72,8 @@ python -c "import bcrypt; print(bcrypt.hashpw(b'TU_CLAVE', bcrypt.gensalt()).dec
 ```
 
 Los umbrales de inventario (advertencia, reorden, caducidad, días de
-alerta y cortes ABC) se leen de `parametros_sistema`; sin base se usan
+alerta, cortes ABC, ventana de consumo, lead time por defecto, días de
+seguridad y cobertura) se leen de `parametros_sistema`; sin base se usan
 los mismos valores por defecto. Los roles salen de `roles`:
 Administrador ve todo y consulta la bitácora; Gerente no ve bitácora;
 Cajero registra ventas en Caja y no ve pronóstico ni compras. Sin base se
@@ -145,6 +147,7 @@ db/
   migrate_inventario_recetas.sql  Recetas, inventario y proveedor para los 66 productos
   migrate_kpi_precio_unidad.sql   KPI de precio promedio por unidad corregido
   migrate_fase0.sql               Origen real/simulado, WAPE/sesgo y vista por origen
+  migrate_fase2.sql               Consumo real, merma, lead time y stock de seguridad
   diagrama_er.*           Diagrama entidad-relación (general y por módulo)
   README_datos.md         Mapeo vista↔pantalla y contratos
 scripts/
@@ -206,12 +209,16 @@ requirements-dev.txt      Dependencias de desarrollo y build
   umbrales de `parametros_sistema`, alerta de críticos + alerta de lotes
   por caducar con purga, orden de compra con cantidad sugerida, cobertura
   de los 10 ingredientes más urgentes y distribución ABC (A/B/C) con cortes
-  configurables. Con base, el botón genera las órdenes con
-  `sp_generar_ordenes_compra`; sin conexión exporta el CSV de siempre.
+  configurables. El consumo diario usa los días con venta (no un divisor
+  fijo de 30) y suma merma/caducidad; la columna **Sugerido** y el punto de
+  reorden incluyen el lead time del proveedor y días de stock de seguridad.
+  Con base, el botón genera las órdenes con `sp_generar_ordenes_compra`;
+  sin conexión exporta el CSV con consumo, lead time y punto de reorden.
 - **Compras:** lista las órdenes por estado, muestra proveedor, fecha, total
   y detalle; genera las sugeridas y recibe una orden completa con
-  `sp_recibir_orden_compra`, refrescando el inventario. Sin base muestra
-  órdenes de ejemplo en solo lectura.
+  `sp_recibir_orden_compra`, refrescando el inventario. La cantidad sugerida
+  descuenta pedidos abiertos y cubre lead time + seguridad + cobertura
+  objetivo. Sin base muestra órdenes de ejemplo en solo lectura.
 - **Pronóstico:** regresión sobre fecha real con nivel en el último punto,
   estacionalidad semanal con 28+ días y 30 pasos diarios que arrancan hoy
   (no en el pasado). El backtest usa el horizonte real en días calendario y
