@@ -160,6 +160,9 @@ class InventoryScreen(QWidget):
     def _purge_expired(self) -> None:
         try:
             n = repository.purge_expired(AppState.user_id)
+        except repository.AccessError as exc:
+            QMessageBox.warning(self, "Permiso", str(exc))
+            return
         except DBError:
             QMessageBox.warning(self, "Caducidad", "Sin conexion a la base.")
             return
@@ -382,7 +385,12 @@ class InventoryScreen(QWidget):
                     repository.save_stock(inv["id_ingrediente"], nuevo, AppState.user_id,
                                           f"Ajuste manual desde inventario ({name})")
                 else:
-                    repository.update_minimo(inv["id_ingrediente"], nuevo)
+                    repository.update_minimo(inv["id_ingrediente"], nuevo,
+                                             AppState.user_id)
+            except repository.AccessError as exc:
+                QMessageBox.warning(self, "Permiso", str(exc))
+                self._reload_table()
+                return
             except DBError:
                 QMessageBox.warning(self, "Sin conexion", "No se pudo guardar en la base.")
                 self._reload_table()

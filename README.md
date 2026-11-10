@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 91 pruebas
+python -m unittest discover tests   # 102 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -62,6 +62,7 @@ mysql -u root -p < db/migrate_fix_totales_ventas.sql
 mysql -u root -p < db/migrate_cantidades_decimales.sql
 mysql -u root -p < db/migrate_inventario_recetas.sql
 mysql -u root -p < db/migrate_kpi_precio_unidad.sql
+mysql -u root -p < db/migrate_fase0.sql
 # 2. Copiar .env.example como .env y poner tus valores (nunca se sube)
 # 3. Datos de prueba:  CALL sp_generar_ventas_demo(60);
 # 4. Dar de alta tu contraseña:
@@ -73,11 +74,21 @@ Los umbrales de inventario (advertencia, reorden, caducidad, días de
 alerta y cortes ABC) se leen de `parametros_sistema`; sin base se usan
 los mismos valores por defecto. Los roles salen de `roles`:
 Administrador ve todo y consulta la bitácora; Gerente no ve bitácora;
-Cajero registra ventas en Caja y no ve pronóstico ni compras.
+Cajero registra ventas en Caja y no ve pronóstico ni compras. Sin base se
+entra en modo Ejemplo: se puede recorrer la app, pero no comprar ni escribir.
 
 Sin MySQL a la mano la app abre igual con el ejemplo. El status de
 Ventas indica la fuente ("base de datos" o "ejemplo"). Ver
 `db/README_datos.md` para el mapeo vista↔pantalla.
+
+### Datos reales vs simulados
+
+Cada venta guarda `origen` (`real` o `simulado`). El cajero automático marca
+sus tickets como simulados; la caja y las acciones manuales registran reales.
+Dashboard y Pronóstico muestran la etiqueta. Si hay menos de 14 ventas reales,
+el pronóstico usa toda la serie y lo dice ("simulados" o "mixtos"). La
+migración `migrate_fase0.sql` agrega la columna, los índices y la vista
+`v_ventas_diarias_origen`; el pronóstico guarda además WAPE y sesgo.
 
 ## Simulación con-vs-sin app
 
@@ -133,13 +144,14 @@ db/
   migrate_cantidades_decimales.sql Cantidades decimales (kg/L) en detalle_ventas
   migrate_inventario_recetas.sql  Recetas, inventario y proveedor para los 66 productos
   migrate_kpi_precio_unidad.sql   KPI de precio promedio por unidad corregido
+  migrate_fase0.sql               Origen real/simulado, WAPE/sesgo y vista por origen
   diagrama_er.*           Diagrama entidad-relación (general y por módulo)
   README_datos.md         Mapeo vista↔pantalla y contratos
 scripts/
   build.ps1               Empaquetado con PyInstaller (cosecha.spec)
   build_installer.ps1     Instalador Inno Setup por usuario
-  cajero_diario.py        Cajero automático: ventas, órdenes y reabasto
-  al_encender.ps1         Ejecuta el cajero al iniciar sesión (opcional)
+  cajero_diario.py        Cajero automático: ventas simuladas, órdenes y reabasto
+  al_encender.ps1         Ejecuta el cajero al iniciar sesión sin ventanas modales
   registrar_al_encender.ps1  Registra la tarea de inicio de sesión
   registrar_tarea.ps1     Registra el cajero diario a una hora fija
   run_cajero_diario.bat   Lanzador del cajero diario
@@ -201,10 +213,13 @@ requirements-dev.txt      Dependencias de desarrollo y build
   `sp_recibir_orden_compra`, refrescando el inventario. Sin base muestra
   órdenes de ejemplo en solo lectura.
 - **Pronóstico:** regresión sobre fecha real con nivel en el último punto,
-  estacionalidad semanal con 28+ días, 30 pasos diarios, backtest contra
-  ingenuo y media móvil (si no gana, se marca preliminar) y reparto por
-  participación de ingresos. Con base, el botón Guardar pronóstico registra
-  la cabecera, los 30 días y el reparto completo; sin conexión solo se ve.
+  estacionalidad semanal con 28+ días y 30 pasos diarios que arrancan hoy
+  (no en el pasado). El backtest usa el horizonte real en días calendario y
+  reporta WAPE, sesgo y cobertura contra ingenuo y media móvil; si no gana,
+  se marca preliminar. El reparto por producto compara 30 días contra 30
+  días y avisa cuántos días tuvieron venta. La pantalla etiqueta si los
+  datos son reales, simulados o mixtos. Con base, Guardar pronóstico
+  registra cabecera, 30 días, reparto, WAPE y sesgo; sin conexión solo se ve.
 - **Interfaz:** títulos, tablas, gráficas y botones; la caja solo muestra
   un aviso si no hay conexión. Roles: Administrador (todo y bitácora),
   Gerente (sin bitácora) y Cajero (caja, ventas e inventario, sin
@@ -216,3 +231,8 @@ requirements-dev.txt      Dependencias de desarrollo y build
 2. Respaldo/restauración de MySQL y validación de recepción de compras
    end-to-end en un equipo destino.
 3. Impresión de ticket y corte de caja para la operación diaria.
+4. **Reportes de ventas para visualización (pendiente):** el Administrador
+   podrá elegir uno o varios productos y un periodo con fecha desde/hasta,
+   y consultar el reporte en pantalla (gráfica y totales) o exportarlo a
+   CSV. Debe distinguir ventas reales de simuladas y respetar los filtros
+   de origen; el CSV conserva el formato seguro para Excel.

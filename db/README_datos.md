@@ -16,6 +16,7 @@ mysql -u root -p < db/migrate_fix_totales_ventas.sql
 mysql -u root -p < db/migrate_cantidades_decimales.sql
 mysql -u root -p < db/migrate_inventario_recetas.sql
 mysql -u root -p < db/migrate_kpi_precio_unidad.sql
+mysql -u root -p < db/migrate_fase0.sql
 ```
 
 `migrate_catalogo_pos.sql` deja 66 productos activos en 6 categorías.
@@ -28,6 +29,10 @@ fila de inventario y un proveedor principal para cada producto que aún no
 los tenía (los jugos conservan sus recetas detalladas).
 `migrate_kpi_precio_unidad.sql` corrige `v_kpi_dashboard` para que el KPI
 sea ingresos / unidades vendidas, no ingresos / tickets.
+`migrate_fase0.sql` agrega `ventas.origen` (`real`/`simulado`), los índices
+por origen y fecha, `pronosticos.wape_modelo`/`sesgo_modelo` y la vista
+`v_ventas_diarias_origen`. Las ventas que ya existían quedan como simuladas.
+Es idempotente.
 
 ## Mapeo vista ↔ pantalla
 
@@ -35,6 +40,7 @@ sea ingresos / unidades vendidas, no ingresos / tickets.
 |---|---|
 | `v_kpi_dashboard` (ticket real, variación, críticos) | Dashboard |
 | `v_ventas_diarias` (serie diaria con fecha) | Dashboard, Pronóstico |
+| `v_ventas_diarias_origen` (serie diaria por `origen`) | Pronóstico (reales vs simuladas) |
 | `v_ventas_por_producto` (categoría como dato) | Ventas |
 | `v_tendencia_producto` (30d vs 30d previos) | Ventas |
 | `v_estado_inventario` (estado, consumo, días, `sin_minimo`) | Inventario |
@@ -59,6 +65,10 @@ sea ingresos / unidades vendidas, no ingresos / tickets.
   stock de sus ingredientes con `FOR UPDATE` antes de insertar la venta.
 - `ventas.total = subtotal - descuento`; el trigger `trg_detalle_ventas_ai`
   mantiene ambos totales al insertar renglones.
+- `ventas.origen` es `real` o `simulado` (default `real`). La caja registra
+  real; `sp_generar_ventas_demo` y el cajero diario registran simulado.
+- `pronosticos` guarda `mae_*`, `wape_modelo` y `sesgo_modelo`; WAPE y sesgo
+  pueden ser NULL si el backtest no tuvo datos suficientes.
 - `estado` incluye `sin_minimo`; `dias_agotar` puede ser NULL ("—").
 - `ordenes_compra.estado` usa `borrador`, `enviada`, `recibida` o `cancelada`;
   solo se reciben las dos primeras. `sp_recibir_orden_compra` recibe todo

@@ -31,7 +31,12 @@ def get_inventory() -> list[dict]:
     return _inventory
 
 
-def reset_inventory() -> list[dict]:
+def invalidate_inventory() -> None:
+    """Marca el inventario como viejo; la proxima pantalla lo recarga."""
     global _inventory
     _inventory = None
+
+
+def reset_inventory() -> list[dict]:
+    invalidate_inventory()
     return get_inventory()

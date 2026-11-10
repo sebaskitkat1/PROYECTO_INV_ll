@@ -40,6 +40,12 @@ class TestPermisos(unittest.TestCase):
         self.assertEqual(roles.rol_desde_id("3"), roles.ROL_CAJERO)
         self.assertEqual(roles.rol_desde_id(99), roles.ROL_CAJERO)
 
+    def test_modo_ejemplo_ve_todo_pero_no_compra(self):
+        for pantalla in ("pos", "sales", "inventory", "compras",
+                         "prediction", "bitacora"):
+            self.assertTrue(roles.puede_ver(roles.ROL_EJEMPLO, pantalla))
+        self.assertFalse(roles.puede_comprar(roles.ROL_EJEMPLO))
+
 
 class TestNavBar(unittest.TestCase):
     @classmethod
@@ -70,6 +76,26 @@ class TestNavBar(unittest.TestCase):
         self.assertIn("Predicción", botones)
         self.assertIn("Bitácora", botones)
         self.assertEqual(nav.role_label.text(), roles.ROL_ADMIN)
+
+
+class TestLoginSinBase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def tearDown(self):
+        AppState.clear()
+
+    def test_login_sin_base_entra_como_ejemplo(self):
+        from app.screens.login_screen import LoginScreen
+        destinos = []
+        s = LoginScreen(on_login=destinos.append)
+        s.email_input.setText("demo@ejemplo.com")
+        s.password_input.setText("1234")
+        s._finish_login()
+        self.assertEqual(AppState.user_role, roles.ROL_EJEMPLO)
+        self.assertIsNone(AppState.user_id)
+        self.assertEqual(destinos, ["dashboard"])
 
 
 class TestPantallasPorRol(unittest.TestCase):

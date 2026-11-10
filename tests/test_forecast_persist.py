@@ -50,6 +50,7 @@ class TestGuardarPronostico(unittest.TestCase):
                       "crecimiento": 20.0}]
         bt = {"mae_modelo": 1.5, "mae_naive": 2.0, "mae_ma7": 2.5, "gana": False}
         with patch("app.data.repository._hay_base", return_value=True), \
+                patch("app.data.repository._require_role", return_value="Administrador"), \
                 patch("app.data.repository.sucursal_id", return_value=3), \
                 patch("app.data.repository.db.transaction",
                       return_value=nullcontext(cur)):

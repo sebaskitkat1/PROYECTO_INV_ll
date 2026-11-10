@@ -40,7 +40,7 @@ class DashboardScreen(QWidget):
         root.addWidget(
             NavBar(
                 title="Hoy",
-                subtitle=self._today_label(),
+                subtitle=self._subtitle(),
                 active_screen="dashboard",
                 on_navigate=on_navigate,
                 on_logout=on_logout,
@@ -127,7 +127,7 @@ class DashboardScreen(QWidget):
     def _sales_line_chart_card(self, data: list[dict]) -> PreviewChartCard:
         card = PreviewChartCard(
             "Ventas, últimos 7 días",
-            "Ingresos diarios",
+            "Días con venta en la última semana",
             draw=lambda c: self._draw_sales_line(c, data, expanded=False),
             expanded_draw=lambda c: self._draw_sales_line(c, data, expanded=True),
             canvas_height=2.3,
@@ -257,6 +257,20 @@ class DashboardScreen(QWidget):
                 )
             ax.set_xlim(0, tope * 1.14)
         canvas.redraw()
+
+    @staticmethod
+    def _subtitle() -> str:
+        texto = DashboardScreen._today_label()
+        try:
+            datos = repository.data_origin()
+        except DBError:
+            return texto + " · ejemplo"
+        if datos["total"]:
+            if datos["pct_simulado"] >= 99.9:
+                return texto + " · datos simulados"
+            if datos["pct_simulado"] > 0:
+                return texto + f" · {datos['pct_simulado']:.0f}% simulado"
+        return texto
 
     @staticmethod
     def _today_label() -> str:

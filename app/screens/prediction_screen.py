@@ -4,6 +4,8 @@ from __future__ import annotations
 import datetime
 from typing import Callable
 
+from matplotlib import dates as mdates
+from matplotlib.ticker import FuncFormatter
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -73,26 +75,54 @@ class PredictionScreen(QWidget):
     # -- grafica historico vs prediccion -----------------------------------
 
     @staticmethod
+    def _fuente_datos() -> tuple[str | None, str]:
+        """Devuelve (origen para filtrar, etiqueta visible)."""
+        try:
+            datos = repository.data_origin()
+        except DBError:
+            return None, "ejemplo"
+        if datos["real"] >= 14:
+            return "real", f"datos reales · {datos['real']} ventas"
+        if datos["total"]:
+            if datos["pct_simulado"] >= 99.9:
+                return None, f"datos simulados · {datos['total']} ventas"
+            return None, f"datos mixtos · {datos['pct_simulado']:.0f}% simulados"
+        return None, "sin ventas registradas"
+
+    @staticmethod
     def _historia() -> list:
         # serie diaria real; ejemplo si no hay conexion
+        origen, _ = PredictionScreen._fuente_datos()
         try:
-            return repository.sales_history(90)
+            return repository.sales_history(90, origen=origen)
         except DBError:
-            hoy = datetime.date.today()
-            hist = []
-            for d in mock_data.get_prediction_data():
-                f = analytics.parse_dia(d["dia"], hoy)
-                if f is not None and d["historico"] is not None:
-                    hist.append((f, float(d["historico"])))
-            hist.sort()
-            return hist
+            pass
+        except Exception:  # noqa: BLE001 - si falta la vista, usa la serie completa
+            try:
+                return repository.sales_history(90)
+            except DBError:
+                pass
+        hoy = datetime.date.today()
+        hist = []
+        for d in mock_data.get_prediction_data():
+            f = analytics.parse_dia(d["dia"], hoy)
+            if f is not None and d["historico"] is not None:
+                hist.append((f, float(d["historico"])))
+        hist.sort()
+        return hist
 
     @staticmethod
     def _detalle() -> list:
+        origen, _ = PredictionScreen._fuente_datos()
         try:
-            return repository.sales_detail()
+            return repository.sales_detail_last_days(30, origen=origen)
         except DBError:
             return mock_data.get_sales_detail()
+        except Exception:  # noqa: BLE001
+            try:
+                return repository.sales_detail_last_days(30)
+            except DBError:
+                return mock_data.get_sales_detail()
 
     def _build_line_chart_card(self) -> QFrame:
         card = QFrame()
@@ -104,30 +134,59 @@ class PredictionScreen(QWidget):
         title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
         layout.addWidget(title)
 
-        canvas = MplCanvas(height=3.2)
         # historico con fecha real, futuro diario calculado
         hist = self._historia()
         futuro = analytics.forecast_daily(hist, 30)
-        dias = [d for d, _ in hist] + [d for d, _ in futuro]
-        historico = [v for _, v in hist] + [None] * len(futuro)
-        prediccion = [None] * (len(hist) - 1) + [hist[-1][1]] + [v for _, v in futuro] if hist else [None] * len(dias)
+        fuente_txt = self._fuente_datos()[1]
+        fechas = [d for d, _ in hist]
+        huecos = sum(1 for a, b in zip(fechas, fechas[1:]) if (b - a).days > 1)
+        if huecos:
+            fuente_txt += f" · {huecos} hueco(s) sin venta"
+        fuente = QLabel(fuente_txt)
+        fuente.setStyleSheet(f"color: {styles.MUTED}; font-size: 11px;")
+        layout.addWidget(fuente)
 
-        x = list(range(len(dias)))
-        # con 120 puntos, un marcador por punto satura la linea
-        cada = max(1, len(x) // 18)
+        canvas = MplCanvas(height=3.2)
+        if not hist:
+            canvas.axes.text(0.5, 0.5, "Sin datos de ventas", ha="center",
+                             va="center", fontsize=10, color=styles.MUTED,
+                             transform=canvas.axes.transAxes)
+            canvas.redraw()
+            layout.addWidget(canvas)
+            return card
+
+        # corta la linea en huecos de mas de un dia para no inventar continuidad
+        xs, ys = [], []
+        for i, (d, v) in enumerate(hist):
+            if i and (d - hist[i - 1][0]).days > 1:
+                xs.append(d - datetime.timedelta(days=1))
+                ys.append(None)
+            xs.append(d)
+            ys.append(v)
+        cada = max(1, len(xs) // 18)
         canvas.axes.plot(
-            x, historico, color=styles.VERDE, linewidth=2.2,
+            xs, ys, color=styles.VERDE, linewidth=2.2,
             marker="o", markersize=4, markevery=cada, label="Histórico",
         )
+        x_pred = [hist[-1][0]]
+        y_pred = [hist[-1][1]]
+        if futuro and (futuro[0][0] - hist[-1][0]).days > 1:
+            x_pred.append(hist[-1][0] + datetime.timedelta(days=1))
+            y_pred.append(None)
+        x_pred += [d for d, _ in futuro]
+        y_pred += [v for _, v in futuro]
+        cada_pred = max(1, len(futuro) // 18) if futuro else 1
         canvas.axes.plot(
-            x, prediccion, color=styles.MENTA, linewidth=2, linestyle="--",
-            marker="o", markersize=4, markevery=cada, label="Pronóstico",
+            x_pred, y_pred, color=styles.MENTA, linewidth=2, linestyle="--",
+            marker="o", markersize=4, markevery=cada_pred, label="Pronóstico",
         )
-        etiquetas = [analytics.etiqueta_corta(d) for d in dias]
-        # como maximo ~10 etiquetas para que no se encimen
-        paso = max(1, len(x) // 10)
-        canvas.axes.set_xticks(x[::paso])
-        canvas.axes.set_xticklabels(etiquetas[::paso], rotation=30, fontsize=8, ha="right")
+        canvas.axes.axvline(hist[-1][0], color=styles.FAINT,
+                            linestyle=":", linewidth=1)
+        canvas.axes.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=10))
+        canvas.axes.xaxis.set_major_formatter(
+            FuncFormatter(lambda x, _pos: analytics.etiqueta_corta(
+                mdates.num2date(x).date())))
+        canvas.axes.tick_params(axis="x", labelrotation=30, labelsize=8)
         canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.axes.margins(x=0.01, y=0.12)
         canvas.axes.legend(fontsize=8, frameon=False, loc="upper left")
@@ -159,8 +218,8 @@ class PredictionScreen(QWidget):
         header_layout.addWidget(title)
         layout.addWidget(header)
 
-        columns = ["Producto", "Ventas Actuales", "Ventas Predichas", "Crecimiento Esperado"]
-        # reparto por participacion: la suma cuadra con el total pronosticado
+        columns = ["Producto", "Últimos 30 días", "Próximos 30 días", "Cambio esperado"]
+        # reparto por participacion de la misma ventana: 30 dias vs 30 dias
         rows = analytics.product_forecast_share(self._detalle(), total_30, 5)
 
         table = QTableWidget(len(rows), len(columns))
@@ -195,7 +254,37 @@ class PredictionScreen(QWidget):
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         layout.addWidget(table)
 
+        inicio_30 = datetime.date.today() - datetime.timedelta(days=29)
+        dias_venta = sum(1 for d, _ in hist if d >= inicio_30)
+        cobertura = QLabel(
+            f"Comparación de 30 días calendario · {dias_venta} día(s) con "
+            f"venta en los últimos 30.")
+        cobertura.setStyleSheet(
+            f"color: {styles.MUTED}; font-size: 11px; padding: 0 18px 4px 18px;")
+        layout.addWidget(cobertura)
+
+        detalle_bt = QLabel(self._backtest_texto(bt))
+        detalle_bt.setWordWrap(True)
+        detalle_bt.setStyleSheet(f"color: {styles.MUTED}; font-size: 11px; padding: 0 18px 14px 18px;")
+        layout.addWidget(detalle_bt)
+
         return card
+
+    @staticmethod
+    def _backtest_texto(bt: dict) -> str:
+        if not bt.get("suficiente"):
+            return (f"Backtest: datos insuficientes ({bt.get('n', 0)} observaciones, "
+                    f"{bt.get('n_origenes', 0)} orígenes).")
+
+        def pct(valor):
+            return "—" if valor is None else f"{valor:.1f}%"
+
+        return (f"Backtest: WAPE modelo {pct(bt.get('wape_modelo'))} · "
+                f"ingenuo {pct(bt.get('wape_naive'))} · "
+                f"media móvil 7 {pct(bt.get('wape_ma7'))} · "
+                f"sesgo {pct(bt.get('sesgo_modelo'))} · "
+                f"horizonte medio {bt.get('horizonte_medio', 0):.1f} días "
+                f"(n={bt.get('n_origenes', 0)}).")
 
     def _build_actions_row(self) -> QHBoxLayout:
         row = QHBoxLayout()

@@ -25,6 +25,44 @@ class AuthError(Exception):
     """Credenciales invalidas (mensaje generico a proposito)."""
 
 
+class AccessError(Exception):
+    """El usuario no tiene permiso para la accion solicitada."""
+
+
+MAX_INTENTOS = 5
+VENTANA_BLOQUEO_MIN = 15
+
+ROLES_VENTA = {roles.ROL_ADMIN, roles.ROL_GERENTE, roles.ROL_CAJERO}
+ROLES_GESTION = {roles.ROL_ADMIN, roles.ROL_GERENTE}
+
+
+def _rol_usuario(id_usuario: int | None) -> str:
+    if not id_usuario:
+        raise AccessError("No hay usuario en sesion.")
+    filas = db.fetchall(
+        "SELECT id_rol, activo FROM usuarios WHERE id_usuario = %s",
+        (int(id_usuario),))
+    if not filas or not filas[0].get("activo"):
+        raise AccessError("Usuario inactivo o inexistente.")
+    return roles.rol_desde_id(filas[0].get("id_rol"))
+
+
+def _require_role(id_usuario: int | None, permitidos: set[str]) -> str:
+    rol = _rol_usuario(id_usuario)
+    if rol not in permitidos:
+        raise AccessError(f"El rol {rol} no tiene permiso para esta accion.")
+    return rol
+
+
+def _intentos_fallidos(correo: str) -> int:
+    filas = db.fetchall(
+        "SELECT COUNT(*) AS n FROM bitacora_accesos "
+        "WHERE correo_intentado = %s AND exitoso = 0 "
+        f"AND fecha_hora >= DATE_SUB(NOW(), INTERVAL {VENTANA_BLOQUEO_MIN} MINUTE)",
+        (correo,))
+    return int(filas[0]["n"] or 0) if filas else 0
+
+
 def _forzar_mock() -> bool:
     return os.getenv("CAFE_DATOS", "").lower() == "mock"
 
@@ -111,11 +149,12 @@ def map_inventario_row(r: dict) -> dict:
 
 
 def sales_last_7_days() -> list[dict]:
+    """Dias con venta dentro de los ultimos 7 dias calendario."""
     _hay_base()
+    inicio = datetime.date.today() - datetime.timedelta(days=6)
     filas = db.fetchall(
         "SELECT fecha, ventas FROM v_ventas_diarias WHERE id_sucursal = %s "
-        "ORDER BY fecha DESC LIMIT 7", (sucursal_id(),))
-    filas.sort(key=lambda r: r["fecha"])
+        "AND fecha >= %s ORDER BY fecha", (sucursal_id(), inicio))
     return [{"day": dia_corto(r["fecha"]), "ventas": float(r["ventas"] or 0)} for r in filas]
 
 
@@ -124,6 +163,33 @@ def sales_detail() -> list[dict]:
     filas = db.fetchall(
         "SELECT nombre, categoria, cantidad, ingresos, margen_pct, tendencia "
         "FROM v_ventas_por_producto ORDER BY ingresos DESC")
+    return [map_venta_row(r) for r in filas]
+
+
+def sales_detail_last_days(days: int = 30, origen: str | None = None) -> list[dict]:
+    """Detalle por producto de los ultimos `days` dias calendario."""
+    _hay_base()
+    dias = max(1, int(days))
+    inicio = datetime.date.today() - datetime.timedelta(days=dias - 1)
+    sql = (
+        "SELECT p.nombre, c.nombre AS categoria, SUM(d.cantidad) AS cantidad, "
+        "SUM(d.subtotal) AS ingresos, "
+        "ROUND((SUM(d.subtotal) - SUM(d.cantidad * d.costo_unitario)) "
+        "/ NULLIF(SUM(d.subtotal), 0) * 100, 1) AS margen_pct, "
+        "COALESCE(tp.tendencia, 'down') AS tendencia "
+        "FROM detalle_ventas d "
+        "JOIN ventas v ON v.id_venta = d.id_venta AND v.estado = 'completada' "
+        "JOIN productos p ON p.id_producto = d.id_producto "
+        "JOIN categorias_producto c ON c.id_categoria = p.id_categoria "
+        "LEFT JOIN v_tendencia_producto tp ON tp.id_producto = p.id_producto "
+        "WHERE v.fecha_hora >= %s")
+    parametros: list[object] = [inicio]
+    if origen:
+        sql += " AND v.origen = %s"
+        parametros.append(origen)
+    sql += (" GROUP BY p.id_producto, p.nombre, c.nombre, tp.tendencia "
+            "ORDER BY ingresos DESC")
+    filas = db.fetchall(sql, tuple(parametros))
     return [map_venta_row(r) for r in filas]
 
 
@@ -142,12 +208,43 @@ def pareto_data() -> list[dict]:
     return [{"nombre": str(r["nombre"]), "ingresos": float(r["ingresos"] or 0)} for r in filas]
 
 
-def sales_history(days: int = 90) -> list[tuple]:
+def sales_history(days: int = 90, origen: str | None = None) -> list[tuple]:
+    """Serie diaria de los ultimos `days` dias calendario.
+
+    Solo devuelve dias con venta: un dia sin fila no se convierte en cero.
+    `origen` permite separar ventas reales de simuladas.
+    """
     _hay_base()
-    filas = db.fetchall(
-        "SELECT fecha, ventas FROM v_ventas_diarias WHERE id_sucursal = %s ORDER BY fecha",
-        (sucursal_id(),))
-    return [(r["fecha"], float(r["ventas"] or 0)) for r in filas[-days:]]
+    dias = max(1, int(days))
+    inicio = datetime.date.today() - datetime.timedelta(days=dias - 1)
+    parametros: tuple
+    if origen:
+        sql = ("SELECT fecha, ventas FROM v_ventas_diarias_origen "
+               "WHERE id_sucursal = %s AND origen = %s AND fecha >= %s "
+               "ORDER BY fecha")
+        parametros = (sucursal_id(), origen, inicio)
+    else:
+        sql = ("SELECT fecha, ventas FROM v_ventas_diarias "
+               "WHERE id_sucursal = %s AND fecha >= %s ORDER BY fecha")
+        parametros = (sucursal_id(), inicio)
+    filas = db.fetchall(sql, parametros)
+    return [(r["fecha"], float(r["ventas"] or 0)) for r in filas]
+
+
+def data_origin() -> dict:
+    """Cuenta ventas reales vs simuladas para etiquetar la UI."""
+    _hay_base()
+    try:
+        filas = db.fetchall(
+            "SELECT origen, COUNT(*) AS n FROM ventas "
+            "WHERE estado = 'completada' GROUP BY origen")
+    except Exception:  # noqa: BLE001 - la etiqueta no debe tumbar la pantalla
+        return {"real": 0, "simulado": 0, "total": 0, "pct_simulado": 0.0}
+    total = sum(int(f.get("n") or 0) for f in filas)
+    real = sum(int(f.get("n") or 0) for f in filas if str(f.get("origen")) == "real")
+    simulado = total - real
+    return {"real": real, "simulado": simulado, "total": total,
+            "pct_simulado": (simulado / total * 100.0) if total else 0.0}
 
 
 def _numero(valor, digitos: int = 2) -> float | None:
@@ -164,6 +261,7 @@ def save_forecast(historia: list[tuple], diario: list[tuple],
                   productos: list[dict], backtest: dict,
                   id_usuario: int | None) -> int:
     _hay_base()
+    _require_role(id_usuario, ROLES_GESTION)
     if not historia or not diario:
         raise ValueError("sin datos para guardar el pronóstico")
     crecimiento = analytics.horizon_growth(
@@ -183,10 +281,13 @@ def save_forecast(historia: list[tuple], diario: list[tuple],
         cur.execute(
             "INSERT INTO pronosticos (id_modelo, id_sucursal, id_usuario, "
             "horizonte_dias, crecimiento_pct, mae_modelo, mae_naive, mae_ma7, "
-            "es_preliminar) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "wape_modelo, sesgo_modelo, es_preliminar) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (id_modelo, sucursal_id(), id_usuario, len(diario),
              _numero(crecimiento), _numero(backtest.get("mae_modelo")),
              _numero(backtest.get("mae_naive")), _numero(backtest.get("mae_ma7")),
+             _numero(backtest.get("wape_modelo")),
+             _numero(backtest.get("sesgo_modelo")),
              0 if backtest.get("gana") else 1))
         id_pronostico = int(cur.lastrowid)
 
@@ -236,12 +337,15 @@ def dashboard_kpis() -> dict:
 def save_stock(id_ingrediente: int, nuevo: float, id_usuario: int | None,
                observaciones: str | None = None) -> None:
     _hay_base()
+    _require_role(id_usuario, ROLES_GESTION)
     db.callproc("sp_ajustar_stock", (sucursal_id(), int(id_ingrediente),
                                      float(nuevo), id_usuario, observaciones))
 
 
-def update_minimo(id_ingrediente: int, nuevo: float) -> None:
+def update_minimo(id_ingrediente: int, nuevo: float,
+                  id_usuario: int | None = None) -> None:
     _hay_base()
+    _require_role(id_usuario, ROLES_GESTION)
     db.execute("UPDATE inventario SET stock_minimo = %s WHERE id_sucursal = %s AND id_ingrediente = %s",
                (float(nuevo), sucursal_id(), int(id_ingrediente)))
 
@@ -256,6 +360,9 @@ def _equipo() -> str | None:
 def auth(correo: str, password: str) -> dict:
     _hay_base()
     correo = (correo or "").strip()
+    if _intentos_fallidos(correo) >= MAX_INTENTOS:
+        raise AuthError(
+            f"Demasiados intentos fallidos. Espera {VENTANA_BLOQUEO_MIN} minutos.")
     filas = db.fetchall(
         "SELECT u.id_usuario, u.nombre, u.correo, u.password_hash, u.id_rol, "
         "u.activo, r.nombre AS rol_nombre "
@@ -324,6 +431,7 @@ def expiry_rows() -> list[dict]:
 
 def purge_expired(id_usuario: int | None) -> int:
     _hay_base()
+    _require_role(id_usuario, ROLES_GESTION)
     salidas = db.callproc("sp_purgar_caducados", (sucursal_id(), id_usuario))
     if salidas:
         return int(salidas[0].get("lotes_purgados") or 0)
@@ -387,12 +495,14 @@ def purchase_order_detail(id_orden: int) -> list[dict]:
 
 def generate_purchase_orders(id_usuario: int | None) -> int:
     _hay_base()
+    _require_role(id_usuario, ROLES_GESTION)
     salidas = db.callproc("sp_generar_ordenes_compra", (sucursal_id(), id_usuario))
     return len(salidas)
 
 
 def receive_purchase_order(id_orden: int, id_usuario: int | None) -> None:
     _hay_base()
+    _require_role(id_usuario, ROLES_GESTION)
     db.callproc("sp_recibir_orden_compra", (int(id_orden), id_usuario))
 
 
@@ -463,18 +573,21 @@ def _cantidad_decimal(valor: object) -> Decimal:
 
 
 def register_sale(items: list[dict], id_metodo_pago: int,
-                  id_usuario: int | None, descuento: float = 0.0) -> dict:
+                  id_usuario: int | None, descuento: float = 0.0,
+                  origen: str = "real") -> dict:
     """Registra una venta completa (cabecera + renglones) en una transaccion.
 
     El precio y el costo se releen de la base al momento de cobrar: la caja no
     confia en los valores que trae la pantalla. Los totales los calculan los
     triggers de detalle_ventas, no Python. Las cantidades aceptan hasta tres
-    decimales (0.500 kg, 0.250 L).
+    decimales (0.500 kg, 0.250 L). `origen` separa ventas reales de simuladas.
     """
     if not items:
         raise ValueError("El ticket está vacío.")
     if not id_usuario:
         raise ValueError("No hay usuario en sesión.")
+    if origen not in ("real", "simulado"):
+        raise ValueError("Origen de venta inválido.")
 
     pedidos: dict[int, Decimal] = {}
     for item in items:
@@ -500,6 +613,7 @@ def register_sale(items: list[dict], id_metodo_pago: int,
         Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     _hay_base()
+    _require_role(id_usuario, ROLES_VENTA)
     sucursal = sucursal_id()
 
     with db.transaction() as cur:
@@ -569,9 +683,9 @@ def register_sale(items: list[dict], id_metodo_pago: int,
 
         cur.execute(
             "INSERT INTO ventas (id_sucursal, id_usuario, id_metodo_pago, "
-            "subtotal, descuento, total, estado) "
-            "VALUES (%s, %s, %s, 0, %s, 0, 'completada')",
-            (sucursal, int(id_usuario), int(id_metodo_pago), descuento_dec))
+            "subtotal, descuento, total, estado, origen) "
+            "VALUES (%s, %s, %s, 0, %s, 0, 'completada', %s)",
+            (sucursal, int(id_usuario), int(id_metodo_pago), descuento_dec, origen))
         id_venta = int(cur.lastrowid)
 
         renglones = [

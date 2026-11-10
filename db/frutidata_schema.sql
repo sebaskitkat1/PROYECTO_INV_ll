@@ -52,6 +52,7 @@ CREATE TABLE bitacora_accesos (
     fecha_hora       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id_acceso),
     KEY idx_bitacora_usuario_fecha (id_usuario, fecha_hora),
+    KEY idx_bitacora_correo_fecha (correo_intentado, fecha_hora),
     CONSTRAINT fk_bitacora_usuario FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario)
         ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -288,9 +289,11 @@ CREATE TABLE ventas (
     descuento       DECIMAL(12,2) NOT NULL DEFAULT 0,
     total           DECIMAL(12,2) NOT NULL DEFAULT 0,
     estado          ENUM('completada','cancelada') NOT NULL DEFAULT 'completada',
+    origen          ENUM('real','simulado') NOT NULL DEFAULT 'real',
     PRIMARY KEY (id_venta),
     KEY idx_ventas_fecha (fecha_hora),
     KEY idx_ventas_sucursal_fecha (id_sucursal, fecha_hora),
+    KEY idx_ventas_origen_fecha (origen, fecha_hora),
     KEY idx_ventas_usuario (id_usuario),
     KEY idx_ventas_cliente (id_cliente),
     KEY idx_ventas_metodo (id_metodo_pago),
@@ -406,6 +409,8 @@ CREATE TABLE pronosticos (
     mae_modelo        DECIMAL(12,2) NULL,
     mae_naive         DECIMAL(12,2) NULL,
     mae_ma7           DECIMAL(12,2) NULL,
+    wape_modelo       DECIMAL(7,2) NULL,
+    sesgo_modelo      DECIMAL(7,2) NULL,
     es_preliminar     TINYINT(1) NOT NULL DEFAULT 0,
     PRIMARY KEY (id_pronostico),
     KEY idx_pron_modelo (id_modelo),
@@ -836,6 +841,19 @@ JOIN detalle_ventas d ON d.id_venta = v.id_venta
 WHERE v.estado = 'completada'
 GROUP BY DATE(v.fecha_hora), v.id_sucursal;
 
+-- Misma serie diaria, separada por origen (real vs simulada).
+CREATE OR REPLACE VIEW v_ventas_diarias_origen AS
+SELECT DATE(v.fecha_hora)            AS fecha,
+       v.id_sucursal,
+       v.origen,
+       COUNT(DISTINCT v.id_venta)    AS tickets,
+       SUM(d.cantidad)               AS unidades,
+       SUM(d.subtotal)               AS ventas
+FROM ventas v
+JOIN detalle_ventas d ON d.id_venta = v.id_venta
+WHERE v.estado = 'completada'
+GROUP BY DATE(v.fecha_hora), v.id_sucursal, v.origen;
+
 CREATE OR REPLACE VIEW v_tendencia_producto AS
 SELECT t.id_producto, t.ingresos_ult30, t.ingresos_prev30,
        CASE WHEN t.ingresos_ult30 >= t.ingresos_prev30 THEN 'up' ELSE 'down' END AS tendencia
@@ -1226,9 +1244,10 @@ BEGIN
                         + IF(DAYOFWEEK(v_fecha) IN (5, 6, 7), 12, 0);
         SET v_t = 0;
         WHILE v_t < v_tickets DO
-            INSERT INTO ventas (id_sucursal, id_usuario, id_metodo_pago, fecha_hora)
+            INSERT INTO ventas (id_sucursal, id_usuario, id_metodo_pago, fecha_hora, origen)
             VALUES (v_suc, v_usr, 1 + FLOOR(RAND() * 3),
-                    TIMESTAMP(v_fecha, SEC_TO_TIME(7 * 3600 + FLOOR(RAND() * 13 * 3600))));
+                    TIMESTAMP(v_fecha, SEC_TO_TIME(7 * 3600 + FLOOR(RAND() * 13 * 3600))),
+                    'simulado');
             SET v_id    = LAST_INSERT_ID();
             SET v_items = 1 + FLOOR(RAND() * 3);
 

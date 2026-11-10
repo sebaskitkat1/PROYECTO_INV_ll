@@ -190,7 +190,7 @@ Guarda `user_id`, `user_name`, `user_email`, `user_role`, `sucursal_id`.
 
 ### 6.1 Autenticación
 
-`repository.auth()` valida contra `usuarios.password_hash` con bcrypt. Registra cada intento en `bitacora_accesos` (éxito/fracaso, equipo, fecha). Actualiza `ultimo_acceso`.
+`repository.auth()` valida contra `usuarios.password_hash` con bcrypt. Registra cada intento en `bitacora_accesos` (éxito/fracaso, equipo, fecha). Actualiza `ultimo_acceso`. Tras 5 fallos en 15 minutos para el mismo correo, bloquea nuevos intentos con un mensaje genérico.
 
 ### 6.2 Roles
 
@@ -199,8 +199,11 @@ Guarda `user_id`, `user_name`, `user_email`, `user_role`, `sucursal_id`.
 | Administrador | Todo + bitácora |
 | Gerente | Todo excepto bitácora |
 | Cajero | Caja, Ventas, Inventario (sin pronóstico ni compras ni bitácora) |
+| Ejemplo | Sin base: recorre todas las pantallas, pero no compra ni escribe |
 
-`roles.py` define los permisos; `main_window.py` filtra la navegación.
+`roles.py` define los permisos; `main_window.py` filtra la navegación. Las
+funciones de escritura de `repository.py` vuelven a validar el rol contra
+`usuarios.id_rol` (`AccessError` si no corresponde), no solo la UI.
 
 ### 6.3 Bitácora
 
@@ -240,7 +243,12 @@ Lista órdenes por estado, muestra proveedor, fecha, total y detalle. Genera sug
 
 ### 8.1 Datos de entrada
 
-Serie diaria de ventas (`v_ventas_diarias`): fecha + total. Mínimo 28 días para estacionalidad semanal.
+Serie diaria de ventas (`v_ventas_diarias` o `v_ventas_diarias_origen`):
+fecha + total. Solo incluye días con venta; un día sin fila no se convierte
+en cero. Mínimo 28 días para estacionalidad semanal. Cada venta lleva
+`origen` (`real`/`simulado`) y la app etiqueta la fuente: usa solo ventas
+reales si hay al menos 14; si no, usa toda la serie y avisa que es simulada
+o mixta.
 
 ### 8.2 Paso 1 — Tendencia lineal sobre ordinal (`fit_trend`)
 
@@ -252,25 +260,46 @@ Factor por día de la semana = promedio del día / promedio general. Se aplica s
 
 ### 8.4 Paso 3 — Proyección 30 días (`forecast_daily`)
 
-Extrapola la tendencia y multiplica por el factor del día de la semana. Nivel en el último punto.
+Extrapola la tendencia y multiplica por el factor del día de la semana. Nivel
+en el último punto. El pronóstico arranca hoy (o mañana si el último dato es
+de hoy), no en la fecha del último dato: si la serie tiene un hueco, no nace
+en el pasado. La distancia se mide en días calendario (`h`), no en número de
+filas.
 
 ### 8.5 Paso 4 — Backtest honesto (`backtest`)
 
-Compara MAE del modelo vs ingenuo y media móvil de 7. Si no gana, se marca preliminar.
+Rolling-origin con el horizonte real: cada origen entrena con lo anterior y
+predice la siguiente observación a `h = fecha_siguiente - última_fecha` días.
+Reporta MAE y WAPE del modelo, del ingenuo y de la media móvil de 7, más
+sMAPE, sesgo (predicho - real sobre el total real), número de orígenes,
+horizonte medio/máximo y si hay datos suficientes. Si el modelo no gana en
+WAPE, se marca preliminar. Con menos de 2 observaciones las métricas son
+`None`, no cero.
 
 ### 8.6 Paso 5 — Reparto por producto (`product_forecast_share`)
 
-Reparte el total proyectado por participación de ingresos de cada producto.
+Reparte el total de los próximos 30 días por participación de ingresos de los
+últimos 30 días. Así el "cambio esperado" compara dos ventanas equivalentes.
+La suma redondeada se ajusta en la fila de mayor participación para que cuadre
+con el total. La tabla muestra los 5 principales y avisa cuántos días de los
+últimos 30 tuvieron venta.
 
 ### 8.7 Persistencia
 
-`save_forecast()` guarda cabecera, 30 días y reparto por producto en `pronosticos`, `pronostico_diario`, `pronostico_producto`.
+`save_forecast()` guarda cabecera, 30 días y reparto por producto en
+`pronosticos`, `pronostico_diario`, `pronostico_producto`; la cabecera incluye
+MAE, WAPE y sesgo del modelo.
 
 ### 8.8 Limitaciones
 
 * Regresión lineal simple (no captura tendencias no lineales).
 * Estacionalidad solo semanal (no mensual/anual).
 * Backtest con pocos datos puede ser inestable.
+* Los días sin venta no se rellenan con cero: la cobertura real se muestra en
+  la pantalla y puede hacer que el crecimiento por producto parezca alto.
+* Si la serie tiene un pico por corridas duplicadas del cajero, la tendencia
+  lo absorbe; el guard diario evita duplicados nuevos, pero no limpia el
+  histórico.
 
 ---
 
@@ -293,11 +322,11 @@ Reparte el total proyectado por participación de ingresos de cada producto.
 
 ### C. Pronóstico completo
 
-1. `sales_history(90)` obtiene la serie diaria.
-2. `fit_trend` + `dow_factors` + `forecast_daily`.
-3. `backtest` compara con ingenuo y media móvil.
-4. `product_forecast_share` reparte por producto.
-5. `save_forecast()` persiste en la base.
+1. `sales_history(90, origen)` obtiene la serie diaria de la fuente elegida.
+2. `fit_trend` + `dow_factors` + `forecast_daily` (arranca hoy).
+3. `backtest` compara con ingenuo y media móvil a horizonte real (WAPE/sesgo).
+4. `product_forecast_share` reparte 30 días contra 30 días.
+5. `save_forecast()` persiste cabecera, días, reparto, WAPE y sesgo.
 
 ### D. Cajero automático diario
 
@@ -316,7 +345,7 @@ Ver sección 13.
 
 ## 11. Calidad, tests y limitaciones
 
-### Tests (91 en verde)
+### Tests (102 en verde)
 
 `unittest discover tests` cubre: inventario, stock, pronóstico, persistencia, repositorio, roles, órdenes, POS, params, simulación, gráficas y UI.
 
@@ -331,6 +360,17 @@ Ver sección 13.
 * Clima de `clima_torreon` son promedios de referencia.
 * Pronóstico lineal simple.
 
+### Pendientes de producto
+
+**Reportes de ventas para visualización (no implementado).** El Administrador
+debe poder elegir uno o varios productos y un periodo (fecha desde/hasta) y
+obtener un reporte de ventas. La salida debe incluir una vista en pantalla
+con gráfica y totales, y una exportación a CSV con el mismo formato seguro
+para Excel que usa la app. El reporte debe respetar el filtro de origen
+(real/simulado) y mostrar unidades, ingresos, margen y evolución diaria o
+por producto. Queda pendiente de diseño de UI y de la consulta SQL
+correspondiente.
+
 ---
 
 ## 12. Base de datos (schema y procedimientos)
@@ -341,7 +381,7 @@ Ver sección 13.
 
 ### Vistas
 
-`v_kpi_dashboard`, `v_ventas_diarias`, `v_ventas_por_producto`, `v_tendencia_producto`, `v_estado_inventario`, `v_orden_compra_sugerida`, `v_pareto_abc`, `v_lotes_por_caducar`, `v_productos_temporada`, `v_vida_util_clima`.
+`v_kpi_dashboard`, `v_ventas_diarias`, `v_ventas_diarias_origen`, `v_ventas_por_producto`, `v_tendencia_producto`, `v_estado_inventario`, `v_orden_compra_sugerida`, `v_pareto_abc`, `v_lotes_por_caducar`, `v_productos_temporada`, `v_vida_util_clima`.
 
 ### Procedimientos
 
@@ -349,7 +389,7 @@ Ver sección 13.
 
 ### Migraciones
 
-`migrate_ordenes_pendientes.sql`, `migrate_catalogo_pos.sql`, `migrate_fix_totales_ventas.sql`, `migrate_cantidades_decimales.sql`, `migrate_inventario_recetas.sql`, `migrate_kpi_precio_unidad.sql`.
+`migrate_ordenes_pendientes.sql`, `migrate_catalogo_pos.sql`, `migrate_fix_totales_ventas.sql`, `migrate_cantidades_decimales.sql`, `migrate_inventario_recetas.sql`, `migrate_kpi_precio_unidad.sql`, `migrate_fase0.sql`.
 
 ---
 
@@ -363,27 +403,29 @@ El modelo de DA necesita datos frescos cada día. El cajero automático simula l
 
 | Archivo | Función |
 |---|---|
-| `scripts/cajero_diario.py` | Script principal. `--tickets N`, `--seed N`, `--dry-run`. |
+| `scripts/cajero_diario.py` | Script principal. `--tickets N`, `--seed N`, `--dry-run`, `--force`. |
 | `scripts/run_cajero_diario.bat` | Wrapper para programar la ejecución. |
-| `scripts/al_encender.ps1` | Al encender: recordatorio MySQL, intenta levantar `MySQL80`, espera base, ejecuta cajero. |
+| `scripts/al_encender.ps1` | Al encender: intenta levantar `MySQL80`, espera base, ejecuta cajero y escribe el log (sin ventanas modales). |
 | `scripts/registrar_al_encender.ps1` | Registra tarea al iniciar sesión (requiere admin). |
 | `.opencode/agents/cajero.md` | Agente "cajero" desplegado en el proyecto. |
 | Carpeta Inicio Windows | `CosechaCajeroAlEncender.bat` lanza `al_encender.ps1` al encender. |
 
 ### 13.3 Flujo diario
 
-1. Al encender aparece aviso recordando abrir MySQL.
-2. Se intenta iniciar `MySQL80` si está detenido.
-3. Se espera hasta ~1 minuto a que `db.available()` sea verdadero.
-4. Si no hay conexión, se avisa al usuario.
-5. Si hay conexión: recibir pendientes → simular ventas → generar órdenes → recibir nuevas → purgar caducados.
-6. El resumen se escribe en `scripts/cajero_diario.log`.
+1. Se intenta iniciar `MySQL80` si está detenido.
+2. Se espera hasta ~1 minuto a que `db.available()` sea verdadero.
+3. Si no hay conexión, se escribe el problema en el log (sin modal).
+4. Si ya hay ventas simuladas hoy, no repite la corrida (`--force` la fuerza).
+5. Si hay conexión y no corrió: recibir pendientes → simular ventas → generar órdenes → recibir nuevas → purgar caducados.
+6. Las ventas quedan con `origen='simulado'`; las órdenes y la purga usan el usuario Administrador (id 1), las ventas el Cajero Demo (id 2).
+7. El resumen se escribe en `scripts/cajero_diario.log`.
 
 ### 13.4 Requisitos
 
 - MySQL (servicio `MySQL80`) disponible al encender.
-- Usuario `Cajero Demo` (id 2) en la base.
+- Usuario `Cajero Demo` (id 2) y Administrador (id 1) en la base.
 - Python 3.10+ con dependencias.
+- Migración `migrate_fase0.sql` aplicada (columna `ventas.origen`).
 
 ### 13.5 Cómo ver los resultados
 
@@ -400,8 +442,9 @@ El modelo de DA necesita datos frescos cada día. El cajero automático simula l
 ### 13.7 Cómo explicarlo a los compañeros
 
 - "El cajero automático simula un día de ventas real, actualiza inventario y genera compras, dejando datos listos para el modelo de DA."
-- "Al encender aparece un aviso para abrir MySQL; si no se puede conectar, avisa para hacerlo manual."
-- "Los resultados se ven en el log y en la app."
+- "Al encender intenta levantar MySQL; si no puede, lo deja en el log para revisarlo."
+- "No corre dos veces el mismo día: el guard diario evita duplicar ventas."
+- "Los resultados se ven en el log y en la app, etiquetados como simulados."
 - "No se modifican precios ni stock a mano: todo pasa por `register_sale`, `generate_purchase_orders` y `receive_purchase_order`."
 
 ---
@@ -436,8 +479,6 @@ scripts/
   al_encender.ps1         Automatización al encender
   run_cajero_diario.bat   Wrapper
   simulacion/             Walk-forward, newsvendor, FIFO, Monte Carlo
-tests/                    91 pruebas
+tests/                    102 pruebas
 .opencode/agents/cajero.md  Agente cajero
 ```
-'''
-print('ready')

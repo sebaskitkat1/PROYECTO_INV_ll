@@ -9,6 +9,7 @@ Supuestos (declarados, no escondidos):
 """
 from __future__ import annotations
 
+import datetime as dt
 import random
 import statistics
 
@@ -26,7 +27,10 @@ def walk_forward_weekly(fechas, valores, min_train=21, horizonte=7, ndigits=-1) 
         tramo = pares[:k]
         f_tramo = [d for d, _ in tramo]
         v_tramo = [float(v) for _, v in tramo]
-        fut = analytics.forecast_daily(list(zip(f_tramo, v_tramo)), horizonte, ndigits)
+        # simulacion sobre fechas historicas: pronostica desde el primer dia
+        # que se va a evaluar, no desde hoy
+        fut = analytics.forecast_daily(list(zip(f_tramo, v_tramo)), horizonte,
+                                       ndigits, start=pares[k][0])
         fut_val = [v for _, v in fut]
         for i in range(horizonte):
             meta_fecha, real = pares[k + i][0], float(pares[k + i][1])
@@ -96,7 +100,8 @@ def residuales_rodantes(fechas_hist, vals_hist, ventana=20, ndigits=-1):
     inicio = max(1, len(pares) - ventana)
     for k in range(inicio, len(pares)):
         tramo = pares[:k]
-        fut = analytics.forecast_daily([(d, float(v)) for d, v in tramo], 1, ndigits)
+        fut = analytics.forecast_daily([(d, float(v)) for d, v in tramo], 1,
+                                       ndigits, start=pares[k][0])
         err = fut[0][1] - float(pares[k][1])
         out.setdefault(pares[k][0].weekday(), []).append(err)
     return out
@@ -106,7 +111,9 @@ def pedido_modelo(fechas_hist, vals_hist, seguridad):
     # pronostico a 1 dia + colchon fijo (solo referencia, no usar en perecederos)
     if not vals_hist:
         return 0.0
-    fut = analytics.forecast_daily(list(zip(fechas_hist, vals_hist)), 1, 0)
+    manana = max(fechas_hist) + dt.timedelta(days=1)
+    fut = analytics.forecast_daily(list(zip(fechas_hist, vals_hist)), 1, 0,
+                                   start=manana)
     return max(0.0, fut[0][1] + seguridad)
 
 

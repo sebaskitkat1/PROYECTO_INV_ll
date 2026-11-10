@@ -231,9 +231,15 @@ def dow_factors(fechas: list[_dt.date], valores: list[float]) -> dict[int, float
 
 
 def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30,
-                 ndigits: int = -1) -> list[tuple[_dt.date, float]]:
+                 ndigits: int = -1, start: _dt.date | None = None
+                 ) -> list[tuple[_dt.date, float]]:
+    """Pronostico diario desde hoy (o desde `start`), no desde el ultimo dato.
+
+    Si el ultimo dato es viejo, el pronostico arranca hoy para no nacer en el
+    pasado. `start` existe para pruebas deterministas y para simulaciones.
+    """
     # ndigits sigue la escala: -1 en pesos (miles), 0 en unidades
-    if not history:
+    if not history or steps <= 0:
         return []
     hist = sorted(history, key=lambda p: p[0])
     fechas = [d for d, _ in hist]
@@ -241,37 +247,108 @@ def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30,
     nivel, pend = fit_trend(fechas, valores)
     dow = dow_factors(fechas, valores)
     ultima = fechas[-1]
+    inicio = start if start is not None else max(
+        ultima + _dt.timedelta(days=1), _dt.date.today())
+    if inicio <= ultima:
+        inicio = ultima + _dt.timedelta(days=1)
     out = []
-    for k in range(1, steps + 1):
-        f = ultima + _dt.timedelta(days=k)
-        v = (nivel + pend * k) * dow.get(f.weekday(), 1.0)
+    for k in range(steps):
+        f = inicio + _dt.timedelta(days=k)
+        h = (f - ultima).days
+        v = (nivel + pend * h) * dow.get(f.weekday(), 1.0)
         out.append((f, max(0.0, round(v, ndigits))))
     return out
 
 
+def _wape(predicciones: list[float], reales: list[float]) -> float | None:
+    total = sum(abs(r) for r in reales)
+    if not reales or total == 0:
+        return None
+    return sum(abs(p - r) for p, r in zip(predicciones, reales)) / total * 100.0
+
+
+def _smape(predicciones: list[float], reales: list[float]) -> float | None:
+    if not reales:
+        return None
+    valores = []
+    for p, r in zip(predicciones, reales):
+        denom = abs(p) + abs(r)
+        valores.append(2.0 * abs(p - r) / denom * 100.0 if denom else 0.0)
+    return sum(valores) / len(valores) if valores else None
+
+
+def _sesgo(predicciones: list[float], reales: list[float]) -> float | None:
+    total = sum(abs(r) for r in reales)
+    if not reales or total == 0:
+        return None
+    return sum(p - r for p, r in zip(predicciones, reales)) / total * 100.0
+
+
 def backtest(fechas: list[_dt.date], valores: list[float], min_origen: int = 7) -> dict:
-    # rolling-origin a 1 paso: modelo vs ingenuo (ultimo) vs media movil 7
+    """Rolling-origin al horizonte real, en dias calendario.
+
+    Cada origen entrena con lo anterior y predice la siguiente observacion a
+    `h = fecha_siguiente - ultima_fecha` dias. No asume que la siguiente fila
+    sea manana: si hay un hueco de 28 dias, el error se mide a 28 dias.
+    """
     pares = sorted(zip(fechas, valores), key=lambda p: p[0])
-    errs: dict[str, list[float]] = {"modelo": [], "naive": [], "ma7": []}
-    for k in range(min(min_origen, len(pares) - 1), len(pares)):
+    n = len(pares)
+    vacio = {
+        "mae_modelo": None, "mae_naive": None, "mae_ma7": None,
+        "mape_modelo": None, "wape_modelo": None, "wape_naive": None,
+        "wape_ma7": None, "smape_modelo": None, "sesgo_modelo": None,
+        "gana": False, "n": n, "n_origenes": 0,
+        "horizonte_medio": 0.0, "horizonte_max": 0, "suficiente": False,
+        "motivo": "muy pocos datos",
+    }
+    if n < 2:
+        return vacio
+
+    inicio = min(min_origen, n - 1)
+    preds: dict[str, list[float]] = {"modelo": [], "naive": [], "ma7": []}
+    reales: list[float] = []
+    horizontes: list[int] = []
+    for k in range(inicio, n):
         tramo = pares[:k]
+        if not tramo:
+            continue
         real = float(pares[k][1])
         f_tramo = [d for d, _ in tramo]
         v_tramo = [float(v) for _, v in tramo]
         nivel, pend = fit_trend(f_tramo, v_tramo)
         dow = dow_factors(f_tramo, v_tramo)
         meta = pares[k][0]
-        errs["modelo"].append(abs((nivel + pend * 1) * dow.get(meta.weekday(), 1.0) - real))
-        errs["naive"].append(abs(v_tramo[-1] - real))
-        errs["ma7"].append(abs(sum(v_tramo[-7:]) / len(v_tramo[-7:]) - real))
-    def _mae(v):
-        return sum(v) / len(v) if v else float("inf")
-    mae = {k: _mae(v) for k, v in errs.items()}
-    media_real = sum(float(v) for _, v in pares) / len(pares) if pares else 0.0
-    return {"mae_modelo": mae["modelo"], "mae_naive": mae["naive"], "mae_ma7": mae["ma7"],
-            "mape_modelo": (mae["modelo"] / media_real * 100.0) if media_real else 0.0,
-            "gana": mae["modelo"] <= min(mae["naive"], mae["ma7"]),
-            "n": len(pares)}
+        h = max(1, (meta - f_tramo[-1]).days)
+        preds["modelo"].append((nivel + pend * h) * dow.get(meta.weekday(), 1.0))
+        preds["naive"].append(v_tramo[-1])
+        preds["ma7"].append(sum(v_tramo[-7:]) / len(v_tramo[-7:]))
+        reales.append(real)
+        horizontes.append(h)
+
+    def _mae(v: list[float]) -> float | None:
+        return sum(abs(p - r) for p, r in zip(v, reales)) / len(v) if v else None
+
+    mae = {k: _mae(v) for k, v in preds.items()}
+    wape = {k: _wape(v, reales) for k, v in preds.items()}
+    n_origenes = len(reales)
+    suficiente = n_origenes >= min_origen
+    umbral = min(wape["naive"] if wape["naive"] is not None else float("inf"),
+                 wape["ma7"] if wape["ma7"] is not None else float("inf"))
+    gana = bool(suficiente and wape["modelo"] is not None
+                and wape["modelo"] <= umbral)
+    return {
+        "mae_modelo": mae["modelo"], "mae_naive": mae["naive"], "mae_ma7": mae["ma7"],
+        "mape_modelo": wape["modelo"],
+        "wape_modelo": wape["modelo"], "wape_naive": wape["naive"],
+        "wape_ma7": wape["ma7"],
+        "smape_modelo": _smape(preds["modelo"], reales),
+        "sesgo_modelo": _sesgo(preds["modelo"], reales),
+        "gana": gana, "n": n, "n_origenes": n_origenes,
+        "horizonte_medio": sum(horizontes) / len(horizontes) if horizontes else 0.0,
+        "horizonte_max": max(horizontes) if horizontes else 0,
+        "suficiente": suficiente,
+        "motivo": "" if suficiente else f"menos de {min_origen} origenes",
+    }
 
 
 def horizon_growth(ultimo: float, futuro: list[float]) -> float:
@@ -281,18 +358,33 @@ def horizon_growth(ultimo: float, futuro: list[float]) -> float:
 
 
 def product_forecast_share(detail: list[dict], total_30: float, n: int = 5) -> list[dict]:
-    # reparte el total pronosticado por participacion de ingresos sobre el
-    # catalogo completo: la suma cuadra con el total. Se muestran los top n.
-    # El margen no reparte nada (sin causalidad).
-    # Ojo: "actual" es la cifra base disponible (periodo sin definir en el
-    # mock); cuando la base traiga periodo, comparar contra la misma ventana.
-    base = sum(float(d.get("ingresos") or 0) for d in detail) or 1.0
+    """Reparte el total de 30 dias por participacion de ingresos de la misma ventana.
+
+    `detail` debe ser el detalle de los ultimos 30 dias (no todo el historico)
+    y `total_30` el total pronosticado para los proximos 30 dias. Asi el
+    "crecimiento" compara dos ventanas equivalentes. La suma de `predicho`
+    cuadra con `total_30` (se ajusta la fila de mayor participacion).
+    """
+    if not detail:
+        return []
+    base = sum(float(d.get("ingresos") or 0) for d in detail)
+    objetivo = max(0, int(round(float(total_30 or 0))))
     todos = []
     for d in detail:
         actual = float(d.get("ingresos") or 0)
-        predicho = max(0, round(total_30 * (actual / base)))
+        share = (actual / base) if base else 0.0
+        predicho = int(round(objetivo * share))
         crec = (predicho - actual) / actual * 100.0 if actual else 0.0
         todos.append({"nombre": d["nombre"], "actual": int(round(actual)),
-                      "predicho": int(predicho), "crecimiento": round(crec, 1)})
+                      "predicho": predicho, "crecimiento": round(crec, 1)})
+    if todos and objetivo:
+        dif = objetivo - sum(r["predicho"] for r in todos)
+        if dif:
+            idx = max(range(len(todos)), key=lambda i: todos[i]["actual"])
+            todos[idx]["predicho"] += dif
+            actual = todos[idx]["actual"]
+            todos[idx]["crecimiento"] = (
+                round((todos[idx]["predicho"] - actual) / actual * 100.0, 1)
+                if actual else 0.0)
     todos.sort(key=lambda r: r["actual"], reverse=True)
     return todos[:n]

@@ -56,7 +56,9 @@ class TestPoliticas(unittest.TestCase):
         fechas = [d for d, _ in hist]
         vals = [v for _, v in hist]
         p = sim_lib.pedido_modelo(fechas, vals, 5.0)
-        f = analytics.forecast_daily(list(zip(fechas, vals)), 1)[0][1]
+        manana = fechas[-1] + dt.timedelta(days=1)
+        f = analytics.forecast_daily(list(zip(fechas, vals)), 1,
+                                     start=manana)[0][1]
         self.assertAlmostEqual(p, f + 5.0)
 
 

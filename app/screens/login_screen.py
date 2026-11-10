@@ -116,7 +116,8 @@ class LoginScreen(QWidget):
         self.login_button.setEnabled(True)
         self.login_button.setText("Entrar")
         if user is None:
-            AppState.set_user(email, role=roles.ROL_ADMIN)
+            # sin base se puede recorrer la app, pero no actuar como admin
+            AppState.set_user(email, role=roles.ROL_EJEMPLO)
         else:
             AppState.set_user(user["correo"], user["id"], repository.sucursal_id(),
                               user.get("rol"))

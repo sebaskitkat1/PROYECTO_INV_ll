@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, repository
+from app.data import analytics, repository, store
 from app.data.app_state import AppState
 from app.data.db import DBError
 from app.widgets.nav_bar import NavBar
@@ -555,6 +555,7 @@ class PosScreen(QWidget):
         finally:
             self.cobrar_btn.setEnabled(self.db_ok and bool(self.cart))
 
+        store.invalidate_inventory()
         self.cart.clear()
         self.search.clear()
         self.status_label.setText(

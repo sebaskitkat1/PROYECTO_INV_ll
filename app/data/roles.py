@@ -4,6 +4,7 @@ from __future__ import annotations
 ROL_ADMIN = "Administrador"
 ROL_GERENTE = "Gerente"
 ROL_CAJERO = "Cajero"
+ROL_EJEMPLO = "Ejemplo"
 
 ROLES_POR_ID = {1: ROL_ADMIN, 2: ROL_GERENTE, 3: ROL_CAJERO}
 
@@ -20,6 +21,9 @@ def rol_desde_id(id_rol: int | str | None) -> str:
 
 
 def puede_ver(rol: str | None, pantalla: str) -> bool:
+    if rol == ROL_EJEMPLO:
+        # modo sin base: se puede recorrer la app, pero no escribir
+        return True
     if pantalla in (PANTALLA_COMPRAS, PANTALLA_PREDICCION):
         return rol in (ROL_ADMIN, ROL_GERENTE)
     if pantalla == PANTALLA_BITACORA:

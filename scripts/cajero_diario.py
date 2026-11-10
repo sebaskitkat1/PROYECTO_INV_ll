@@ -12,6 +12,10 @@ Uso:
   python scripts/cajero_diario.py --tickets 50
   python scripts/cajero_diario.py --seed 42 --tickets 20
   python scripts/cajero_diario.py --dry-run        # no escribe en la base
+  python scripts/cajero_diario.py --force          # repite aunque ya haya ventas hoy
+
+Por defecto no corre dos veces el mismo dia: el login y la tarea de las 08:00
+no duplican tickets. Las ventas quedan marcadas con origen='simulado'.
 """
 from __future__ import annotations
 
@@ -29,6 +33,8 @@ from app.data import db, repository
 
 # Usuario cajero por defecto (Cajero Demo, id_rol=3).
 DEFAULT_USER_ID = 2
+# Las ordenes de compra y la purga son gestion: usuario Administrador.
+ADMIN_USER_ID = 1
 # Productos por ticket (min, max).
 ITEMS_POR_TICKET = (1, 4)
 # Cantidades tipicas por unidad.
@@ -46,7 +52,7 @@ def _recibir_pendientes() -> int:
     for o in ordenes:
         if o.get("estado") in ("borrador", "enviada"):
             try:
-                repository.receive_purchase_order(int(o["id_orden"]), DEFAULT_USER_ID)
+                repository.receive_purchase_order(int(o["id_orden"]), ADMIN_USER_ID)
                 recibidas += 1
             except Exception as exc:  # noqa: BLE001
                 print(f"  [aviso] orden #{o['id_orden']} no recibida: {exc}")
@@ -82,13 +88,15 @@ def _simular_ventas(tickets: int, rng: random.Random, dry_run: bool) -> tuple[in
 
         metodo = rng.choice(metodos)
         try:
-            repository.register_sale(items, int(metodo), DEFAULT_USER_ID)
+            repository.register_sale(items, int(metodo), DEFAULT_USER_ID,
+                                     origen="simulado")
             ok += 1
         except Exception:  # noqa: BLE001
             # Reintentar una vez tras reponer inventario.
             _recibir_pendientes()
             try:
-                repository.register_sale(items, int(metodo), DEFAULT_USER_ID)
+                repository.register_sale(items, int(metodo), DEFAULT_USER_ID,
+                                         origen="simulado")
                 ok += 1
             except Exception as exc2:  # noqa: BLE001
                 fail += 1
@@ -101,10 +109,22 @@ def _generar_ordenes(dry_run: bool) -> int:
     if dry_run:
         return 0
     try:
-        return int(repository.generate_purchase_orders(DEFAULT_USER_ID))
+        return int(repository.generate_purchase_orders(ADMIN_USER_ID))
     except Exception as exc:  # noqa: BLE001
         print(f"  [aviso] generar ordenes: {exc}")
         return 0
+
+
+def _ya_corrio_hoy() -> bool:
+    """Evita que el login y la tarea de las 08:00 dupliquen la corrida."""
+    try:
+        filas = db.fetchall(
+            "SELECT COUNT(*) AS n FROM ventas "
+            "WHERE DATE(fecha_hora) = CURDATE() AND origen = 'simulado'")
+        return bool(filas and int(filas[0]["n"] or 0) > 0)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [aviso] no se pudo verificar la corrida diaria: {exc}")
+        return False
 
 
 def main() -> int:
@@ -112,6 +132,7 @@ def main() -> int:
     parser.add_argument("--tickets", type=int, default=30, help="numero de tickets a simular (default 30)")
     parser.add_argument("--seed", type=int, default=None, help="semilla para reproducibilidad")
     parser.add_argument("--dry-run", action="store_true", help="no escribe en la base")
+    parser.add_argument("--force", action="store_true", help="repite la corrida aunque ya haya ventas hoy")
     args = parser.parse_args()
 
     rng = random.Random(args.seed if args.seed is not None else random.randrange(10**9))
@@ -126,6 +147,9 @@ def main() -> int:
         if not db.available():
             print("[error] sin conexion a la base de datos.")
             return 1
+        if not args.force and _ya_corrio_hoy():
+            print("Ya hay ventas simuladas hoy. Usa --force para repetir.")
+            return 0
 
     print("[1/4] Reponiendo inventario (ordenes pendientes)...")
     r0 = _recibir_pendientes() if not args.dry_run else 0
@@ -146,7 +170,7 @@ def main() -> int:
     # Purga de lotes caducados, si aplica.
     if not args.dry_run:
         try:
-            purgados = repository.purge_expired(DEFAULT_USER_ID)
+            purgados = repository.purge_expired(ADMIN_USER_ID)
             print(f"      lotes purgados: {purgados}")
         except Exception as exc:  # noqa: BLE001
             print(f"  [aviso] purga: {exc}")
