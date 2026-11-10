@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from app import styles
 from app.data import analytics, export_csv, mock_data, repository
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -92,8 +93,13 @@ class SalesScreen(QWidget):
         scroll.setWidget(content)
         root.addWidget(scroll)
 
-        self.all_rows = self._load_rows()
-        self._refresh()
+        self.all_rows = []
+        if not async_disponible():
+            self.all_rows = self._load_rows()
+            self._refresh()
+        else:
+            self.status_label.setText("Cargando ventas…")
+            run_async(self, self._load_rows, self._apply_rows, self._on_load_error)
 
     # -- filtros ---------------------------------------------------------
 
@@ -155,6 +161,13 @@ class SalesScreen(QWidget):
                 d["categoria"] = CATEGORY_MAP.get(r["nombre"], "Frutas")
                 rows.append(d)
             return rows
+
+    def _apply_rows(self, rows: list[dict]) -> None:
+        self.all_rows = rows
+        self._refresh()
+
+    def _on_load_error(self, _mensaje: str) -> None:
+        self._apply_rows([])
 
     def _apply_filters(self, rows: list[dict]) -> list[dict]:
         cat = self.category_combo.currentText() if hasattr(self, "category_combo") else "Todos"

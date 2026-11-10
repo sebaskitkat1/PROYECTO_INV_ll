@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from app import styles
 from app.data import analytics, mock_data, repository
 from app.data.app_state import AppState
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -41,6 +42,10 @@ class PredictionScreen(QWidget):
     ):
         super().__init__(parent)
         self._online = repository.activa()
+        self._hist: list = []
+        self._detalle_cache: list[dict] = []
+        self._futuro: list = []
+        self._bt: dict = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -64,13 +69,64 @@ class PredictionScreen(QWidget):
         content_layout.setContentsMargins(28, 24, 28, 24)
         content_layout.setSpacing(14)
 
-        content_layout.addWidget(self._build_line_chart_card())
-        content_layout.addWidget(self._build_table_card())
+        self.chart_layout = QVBoxLayout()
+        content_layout.addLayout(self.chart_layout)
+        self.table_layout = QVBoxLayout()
+        content_layout.addLayout(self.table_layout)
         content_layout.addLayout(self._build_actions_row())
         content_layout.addStretch()
 
         scroll.setWidget(content)
         root.addWidget(scroll)
+        self._load_data()
+
+    # -- carga de datos -------------------------------------------------
+
+    def _load_data(self) -> None:
+        if not async_disponible():
+            self._apply_data(self._fetch_data())
+            return
+        run_async(self, self._fetch_data, self._apply_data,
+                  lambda _mensaje: self._apply_data(self._fallback_data()))
+
+    @staticmethod
+    def _fetch_data() -> dict:
+        origen, fuente_txt = PredictionScreen._fuente_datos()
+        hist = PredictionScreen._historia(origen)
+        detalle = PredictionScreen._detalle(origen)
+        futuro = analytics.forecast_daily(hist, 30)
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        return {"hist": hist, "detalle": detalle, "futuro": futuro,
+                "bt": bt, "fuente": fuente_txt}
+
+    @staticmethod
+    def _fallback_data() -> dict:
+        hist = PredictionScreen._historia(None)
+        detalle = mock_data.get_sales_detail()
+        futuro = analytics.forecast_daily(hist, 30)
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        return {"hist": hist, "detalle": detalle, "futuro": futuro,
+                "bt": bt, "fuente": "ejemplo"}
+
+    @staticmethod
+    def _clear_layout(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _apply_data(self, data: dict) -> None:
+        self._hist = data["hist"]
+        self._detalle_cache = data["detalle"]
+        self._futuro = data["futuro"]
+        self._bt = data["bt"]
+        self._clear_layout(self.chart_layout)
+        self._clear_layout(self.table_layout)
+        self.chart_layout.addWidget(
+            self._line_chart_card(data["hist"], data["futuro"], data["fuente"]))
+        self.table_layout.addWidget(
+            self._table_card(data["hist"], data["futuro"], data["bt"], data["detalle"]))
 
     # -- grafica historico vs prediccion -----------------------------------
 
@@ -90,9 +146,8 @@ class PredictionScreen(QWidget):
         return None, "sin ventas registradas"
 
     @staticmethod
-    def _historia() -> list:
+    def _historia(origen: str | None = None) -> list:
         # serie diaria real; ejemplo si no hay conexion
-        origen, _ = PredictionScreen._fuente_datos()
         try:
             return repository.sales_history(90, origen=origen)
         except DBError:
@@ -112,8 +167,7 @@ class PredictionScreen(QWidget):
         return hist
 
     @staticmethod
-    def _detalle() -> list:
-        origen, _ = PredictionScreen._fuente_datos()
+    def _detalle(origen: str | None = None) -> list:
         try:
             return repository.sales_detail_last_days(30, origen=origen)
         except DBError:
@@ -124,7 +178,7 @@ class PredictionScreen(QWidget):
             except DBError:
                 return mock_data.get_sales_detail()
 
-    def _build_line_chart_card(self) -> QFrame:
+    def _line_chart_card(self, hist: list, futuro: list, fuente_txt: str) -> QFrame:
         card = QFrame()
         card.setProperty("role", "card")
         layout = QVBoxLayout(card)
@@ -134,10 +188,6 @@ class PredictionScreen(QWidget):
         title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
         layout.addWidget(title)
 
-        # historico con fecha real, futuro diario calculado
-        hist = self._historia()
-        futuro = analytics.forecast_daily(hist, 30)
-        fuente_txt = self._fuente_datos()[1]
         fechas = [d for d, _ in hist]
         huecos = sum(1 for a, b in zip(fechas, fechas[1:]) if (b - a).days > 1)
         if huecos:
@@ -197,16 +247,14 @@ class PredictionScreen(QWidget):
 
     # -- tabla de productos predichos --------------------------------------
 
-    def _build_table_card(self) -> QFrame:
+    def _table_card(self, hist: list, futuro: list, bt: dict,
+                    detalle: list[dict]) -> QFrame:
         card = QFrame()
         card.setProperty("role", "card")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # backtest: si el modelo no gana a lo simple, se avisa preliminar
-        hist = self._historia()
-        futuro = analytics.forecast_daily(hist, 30)
-        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
         total_30 = sum(v for _, v in futuro)
 
         header = QFrame()
@@ -220,7 +268,7 @@ class PredictionScreen(QWidget):
 
         columns = ["Producto", "Últimos 30 días", "Próximos 30 días", "Cambio esperado"]
         # reparto por participacion de la misma ventana: 30 dias vs 30 dias
-        rows = analytics.product_forecast_share(self._detalle(), total_30, 5)
+        rows = analytics.product_forecast_share(detalle, total_30, 5)
 
         table = QTableWidget(len(rows), len(columns))
         table.setHorizontalHeaderLabels(columns)
@@ -306,13 +354,13 @@ class PredictionScreen(QWidget):
     def _save_forecast(self) -> None:
         if not self._online:
             return
-        hist = self._historia()
-        futuro = analytics.forecast_daily(hist, 30)
+        hist = self._hist
+        futuro = self._futuro
         if not hist or not futuro:
             QMessageBox.information(self, "Pronóstico", "No hay datos suficientes.")
             return
-        detalle = self._detalle()
-        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        detalle = self._detalle_cache
+        bt = self._bt
         total_30 = sum(v for _, v in futuro)
         productos = analytics.product_forecast_share(detalle, total_30, len(detalle))
         try:

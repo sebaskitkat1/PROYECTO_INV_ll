@@ -198,6 +198,23 @@ class TestPosScreen(unittest.TestCase):
         self.assertEqual(self.screen.qty_input.decimals(), 0)
         self.assertEqual(self.screen.qty_input.singleStep(), 1.0)
 
+    def test_busqueda_filtra_en_memoria_sin_acentos(self):
+        # el catalogo se carga una vez; la busqueda solo recorta la lista
+        self.screen.db_ok = True
+        self.screen.all_products = [
+            self._producto(1, "Mango"),
+            self._producto(2, "Piña"),
+            self._producto(3, "Jitomate"),
+        ]
+        self.screen.search.setText("pina")
+        self.screen._refresh_products()
+        self.assertEqual([p["nombre"] for p in self.screen.products], ["Piña"])
+        self.assertEqual(self.screen.product_table.rowCount(), 1)
+
+        self.screen.search.setText("tom")
+        self.screen._refresh_products()
+        self.assertEqual([p["nombre"] for p in self.screen.products], ["Jitomate"])
+
 
 if __name__ == "__main__":
     unittest.main()

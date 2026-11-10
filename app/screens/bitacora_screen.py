@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from app import styles
 from app.data import repository
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.widgets.nav_bar import NavBar
 
@@ -88,13 +89,26 @@ class BitacoraScreen(QWidget):
         return table
 
     def _reload(self) -> None:
+        if not async_disponible():
+            self._apply_rows(self._load_rows())
+            return
+        self.status_label.setText("Cargando bitácora…")
+        run_async(self, self._load_rows, self._apply_rows, self._on_error)
+
+    @staticmethod
+    def _load_rows() -> list[dict]:
         try:
-            rows = repository.bitacora_rows()
+            return repository.bitacora_rows()
         except DBError:
-            rows = []
+            return []
+
+    def _apply_rows(self, rows: list[dict]) -> None:
         self._populate(rows)
         fuente = "sin conexión" if not rows else repository.etiqueta_fuente()
         self.status_label.setText(f"{len(rows)} registros · {fuente}")
+
+    def _on_error(self, _mensaje: str) -> None:
+        self._apply_rows([])
 
     def _populate(self, rows: list[dict]) -> None:
         self.table.setSortingEnabled(False)

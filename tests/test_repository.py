@@ -1,6 +1,7 @@
 """Repositorio: mapeo de filas, fallback a ejemplo y auth contra la base."""
 import os
 import unittest
+import uuid
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["CAFE_DATOS"] = "mock"  # por defecto; el test de auth lo quita
@@ -81,9 +82,11 @@ class TestAuthReal(unittest.TestCase):
         try:
             if not db.available():
                 self.skipTest("sin MySQL a la mano")
+            # correo unico: evita que corridas repetidas activen el bloqueo
+            correo = f"prueba-{uuid.uuid4().hex}@frutidata.local"
             antes = db.fetchall("SELECT COUNT(*) AS n FROM bitacora_accesos")[0]["n"]
             with self.assertRaises(repository.AuthError):
-                repository.auth("caja@frutidata.local", "cualquier-clave")
+                repository.auth(correo, "cualquier-clave")
             despues = db.fetchall("SELECT COUNT(*) AS n FROM bitacora_accesos")[0]["n"]
             self.assertEqual(despues, antes + 1)
         finally:

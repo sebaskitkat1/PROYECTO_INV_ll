@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from app import styles
 from app.data import analytics, mock_data, repository, store
 from app.data.app_state import AppState
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.widgets.nav_bar import NavBar
 from app.widgets.table_items import NumericItem
@@ -184,13 +185,28 @@ class PurchasesScreen(QWidget):
 
     def _reload_orders(self) -> None:
         seleccionada = self._selected_id()
-        if self._online:
-            try:
-                self.orders = repository.purchase_orders()
-            except DBError:
-                self._online = False
-        if not self._online:
-            self.orders = mock_data.get_purchase_orders()
+        if not async_disponible():
+            orders, online = self._load_orders()
+            self._apply_orders(orders, online, seleccionada)
+            return
+        self.status_label.setText("Cargando órdenes…")
+        run_async(self, self._load_orders,
+                  lambda resultado: self._apply_orders(
+                      resultado[0], resultado[1], seleccionada),
+                  lambda _mensaje: self._apply_orders(
+                      mock_data.get_purchase_orders(), False, None))
+
+    @staticmethod
+    def _load_orders() -> tuple[list[dict], bool]:
+        try:
+            return repository.purchase_orders(), True
+        except DBError:
+            return mock_data.get_purchase_orders(), False
+
+    def _apply_orders(self, orders: list[dict], online: bool,
+                      seleccionada: int | None) -> None:
+        self.orders = orders
+        self._online = online
         self.generate_btn.setEnabled(self._online)
         self._populate_orders(seleccionada)
 
@@ -263,18 +279,38 @@ class PurchasesScreen(QWidget):
             self._clear_detail()
             return
         self.detail_title.setText(f"Orden #{order['id_orden']} · {order['proveedor']}")
-        if self._online:
+        self._detail_seq = getattr(self, "_detail_seq", 0) + 1
+        secuencia = self._detail_seq
+        if not async_disponible():
+            self._apply_detail(order, self._load_detail(order, self._online), secuencia)
+            return
+        self.detail_table.setRowCount(0)
+        online = self._online
+        run_async(self, lambda: self._load_detail(order, online),
+                  lambda resultado: self._apply_detail(order, resultado, secuencia),
+                  lambda _mensaje: self._apply_detail(order, ([], False), secuencia))
+
+    @staticmethod
+    def _load_detail(order: dict, online: bool) -> tuple[list[dict], bool]:
+        if online:
             try:
-                filas = repository.purchase_order_detail(order["id_orden"])
+                return repository.purchase_order_detail(order["id_orden"]), True
             except DBError:
-                self._online = False
-                self.generate_btn.setEnabled(False)
-                self.status_label.setText("sin conexión · detalle no disponible")
-                filas = []
-        else:
-            filas = mock_data.get_purchase_order_detail(order["id_orden"])
+                return [], False
+        return mock_data.get_purchase_order_detail(order["id_orden"]), False
+
+    def _apply_detail(self, order: dict, resultado: tuple[list[dict], bool],
+                      secuencia: int) -> None:
+        if secuencia != getattr(self, "_detail_seq", 0):
+            return
+        filas, ok = resultado
+        if self._online and not ok:
+            self._online = False
+            self.generate_btn.setEnabled(False)
+            self.status_label.setText("sin conexión · detalle no disponible")
         self._populate_detail(filas)
-        self.receive_btn.setEnabled(self._online and order["estado"] in ("borrador", "enviada"))
+        self.receive_btn.setEnabled(
+            self._online and order["estado"] in ("borrador", "enviada"))
 
     def _clear_detail(self) -> None:
         self.detail_title.setText("Detalle de la orden")

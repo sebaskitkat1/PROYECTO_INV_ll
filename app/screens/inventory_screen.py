@@ -25,8 +25,9 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, export_csv, mock_data, repository, roles, store
+from app.data import analytics, export_csv, mock_data, params, repository, roles, store
 from app.data.app_state import AppState
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.widgets.mpl_canvas import MplCanvas
 from app.widgets.nav_bar import NavBar
@@ -104,8 +105,9 @@ class InventoryScreen(QWidget):
         content_layout.setSpacing(14)
 
         # lista compartida: lo editado sigue ahi al volver
-        self.inventory: list[dict] = store.get_inventory()
-        self.params = repository.system_params()
+        self.inventory: list[dict] = []
+        self.params = params.defaults()
+        self.pareto: list[dict] = []
         self.can_buy = roles.puede_comprar(roles.rol_ui(AppState.user_role))
 
         self.alert_banner, self.alert_label = self._build_alert_banner()
@@ -115,14 +117,67 @@ class InventoryScreen(QWidget):
         content_layout.addLayout(self._build_summary_row())
         self.table = self._build_table()
         content_layout.addWidget(self.table)
-        content_layout.addLayout(self._build_charts_row())
+        self.charts_row = QHBoxLayout()
+        self.charts_row.setSpacing(16)
+        content_layout.addLayout(self.charts_row)
         content_layout.addLayout(self._build_actions_row())
         content_layout.addStretch()
 
         scroll.setWidget(content)
         root.addWidget(scroll)
+        self._load_data()
+
+    # -- carga de datos -------------------------------------------------
+
+    def _load_data(self) -> None:
+        if not async_disponible():
+            self._apply_data(self._fetch_data())
+            return
+        run_async(self, self._fetch_data, self._apply_data,
+                  lambda _mensaje: self._apply_data(self._fallback_data()))
+
+    @staticmethod
+    def _fetch_data() -> dict:
+        datos = {
+            "inventory": store.get_inventory(),
+            "params": repository.system_params(),
+            "pareto": [],
+            "expiry": [],
+        }
+        try:
+            datos["pareto"] = repository.pareto_data()
+        except DBError:
+            datos["pareto"] = mock_data.get_pareto_data()
+        try:
+            datos["expiry"] = repository.expiry_rows()
+        except DBError:
+            pass
+        return datos
+
+    @staticmethod
+    def _fallback_data() -> dict:
+        return {"inventory": store.get_inventory(),
+                "params": params.defaults(),
+                "pareto": mock_data.get_pareto_data(),
+                "expiry": []}
+
+    def _apply_data(self, datos: dict) -> None:
+        self.inventory = datos["inventory"]
+        self.params = datos["params"]
+        self.pareto = datos["pareto"]
+        self._reload_table()
         self._refresh_summary_and_alert()
-        self._refresh_expiry()
+        self._apply_expiry(datos["expiry"])
+        self._refresh_charts()
+
+    def _refresh_charts(self) -> None:
+        while self.charts_row.count():
+            item = self.charts_row.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.charts_row.addWidget(self._coverage_chart_card())
+        self.charts_row.addWidget(self._abc_chart_card())
 
     # -- resumen -------------------------------------------------------
 
@@ -144,8 +199,10 @@ class InventoryScreen(QWidget):
         try:
             lotes = repository.expiry_rows()
         except DBError:
-            self.expiry_banner.setVisible(False)
-            return
+            lotes = []
+        self._apply_expiry(lotes)
+
+    def _apply_expiry(self, lotes: list[dict]) -> None:
         vencidos = [lote for lote in lotes if lote["estado"] == "vencido"]
         if not lotes:
             self.expiry_banner.setVisible(False)
@@ -326,7 +383,6 @@ class InventoryScreen(QWidget):
         table.setAlternatingRowColors(True)
         table.setSortingEnabled(True)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self._reload_table(table)
         table.setItemDelegateForColumn(1, StockDelegate(self._unidad_fila, table))
         table.setItemDelegateForColumn(2, StockDelegate(self._unidad_fila, table))
         table.cellChanged.connect(self._on_cell_changed)
@@ -480,13 +536,6 @@ class InventoryScreen(QWidget):
 
     # -- graficas ----------------------------------------------------------
 
-    def _build_charts_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setSpacing(16)
-        row.addWidget(self._coverage_chart_card())
-        row.addWidget(self._abc_chart_card())
-        return row
-
     def _coverage_chart_card(self) -> QFrame:
         # solo los 10 mas urgentes: con 66 ingredientes el grafico completo
         # era ilegible. La tabla de abajo conserva todos los datos.
@@ -536,10 +585,7 @@ class InventoryScreen(QWidget):
                                 "Participación de ingresos por clase")
         canvas = MplCanvas(height=2.5)
         canvas.setMinimumHeight(250)
-        try:
-            pareto = repository.pareto_data()
-        except DBError:
-            pareto = mock_data.get_pareto_data()
+        pareto = self.pareto
         clases = analytics.abc_classes(pareto, self.params["abc_corte_a"],
                                        self.params["abc_corte_b"])
         resumen = analytics.abc_summary(clases)

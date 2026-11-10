@@ -1,6 +1,7 @@
 """Punto de venta: buscar productos, armar el ticket y registrar la venta."""
 from __future__ import annotations
 
+import unicodedata
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -23,12 +24,19 @@ from PySide6.QtWidgets import (
 from app import styles
 from app.data import analytics, repository, store
 from app.data.app_state import AppState
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.widgets.nav_bar import NavBar
 from app.widgets.table_items import NumericItem, TextItem
 
 COLUMNAS_PRODUCTO = ["Producto", "Categoría", "Precio", "Unidad"]
 COLUMNAS_TICKET = ["Producto", "Cant.", "Precio", "Importe"]
+
+
+def _normalizar(texto: str) -> str:
+    """Minusculas y sin acentos para buscar en memoria."""
+    plano = unicodedata.normalize("NFKD", texto or "")
+    return "".join(c for c in plano if not unicodedata.combining(c)).lower()
 
 
 class PosScreen(QWidget):
@@ -43,6 +51,7 @@ class PosScreen(QWidget):
         super().__init__(parent)
         self.cart: dict[int, dict] = {}
         self.products: list[dict] = []
+        self.all_products: list[dict] = []
         self.db_ok = False
 
         root = QVBoxLayout(self)
@@ -265,28 +274,42 @@ class PosScreen(QWidget):
     # -- carga de datos -------------------------------------------------
 
     def _load_catalog(self) -> None:
-        try:
-            categorias = repository.pos_categories()
-            metodos = repository.pos_payment_methods()
-            self.products = repository.pos_products()
-        except DBError:
-            self._set_offline()
+        if not async_disponible():
+            try:
+                datos = self._fetch_catalog()
+            except DBError:
+                self._set_offline()
+                return
+            self._apply_catalog(datos)
             return
+        self.count_label.setText("Cargando catálogo…")
+        run_async(self, self._fetch_catalog, self._apply_catalog,
+                  lambda _mensaje: self._set_offline())
 
+    @staticmethod
+    def _fetch_catalog() -> dict:
+        return {
+            "categorias": repository.pos_categories(),
+            "metodos": repository.pos_payment_methods(),
+            "productos": repository.pos_products(),
+        }
+
+    def _apply_catalog(self, datos: dict) -> None:
         self.db_ok = True
         self.offline_banner.setVisible(False)
 
         self.category.blockSignals(True)
         self.category.clear()
         self.category.addItem("Todas las categorías", None)
-        for nombre in categorias:
+        for nombre in datos["categorias"]:
             self.category.addItem(nombre, nombre)
         self.category.blockSignals(False)
 
         self.payment.clear()
-        for metodo in metodos:
+        for metodo in datos["metodos"]:
             self.payment.addItem(metodo["nombre"], metodo["id"])
 
+        self.all_products = datos["productos"]
         self._refresh_products()
         self._refresh_cart()
 
@@ -294,6 +317,7 @@ class PosScreen(QWidget):
         self.db_ok = False
         self.offline_banner.setVisible(True)
         self.products = []
+        self.all_products = []
         self.product_table.setRowCount(0)
         self.search.setEnabled(False)
         self.category.setEnabled(False)
@@ -304,14 +328,16 @@ class PosScreen(QWidget):
     # -- catalogo -------------------------------------------------------
 
     def _refresh_products(self) -> None:
+        """Filtra el catalogo ya cargado; no vuelve a consultar la base."""
         if not self.db_ok:
             return
         categoria = self.category.currentData()
-        try:
-            self.products = repository.pos_products(self.search.text(), categoria)
-        except DBError:
-            self._set_offline()
-            return
+        texto = _normalizar(self.search.text().strip())
+        self.products = [
+            p for p in self.all_products
+            if (not categoria or p["categoria"] == categoria)
+            and (not texto or texto in _normalizar(p["nombre"]))
+        ]
         self._fill_product_table()
 
     def _fill_product_table(self) -> None:

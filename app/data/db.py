@@ -1,6 +1,7 @@
 """Conexion MySQL leida del .env. Sin credenciales en codigo ni en logs."""
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from contextlib import contextmanager
@@ -77,6 +78,8 @@ def connect():
     try:
         return mysql.connector.connect(connection_timeout=5, **cfg)
     except Exception as e:
+        logging.getLogger("cosecha.db").warning(
+            "No se pudo conectar a MySQL (%s)", type(e).__name__)
         raise DBError("sin conexion a la base") from e
 
 

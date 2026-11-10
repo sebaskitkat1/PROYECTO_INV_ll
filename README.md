@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 104 pruebas
+python -m unittest discover tests   # 105 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -49,6 +49,19 @@ El instalador requiere Inno Setup 6
 schema y crea `.env` desde `.env.example` la primera vez. El portable
 necesita que copies tu `.env` junto al `.exe` (la app lo busca ahí primero).
 El build usa `cosecha.spec` y `main.py` como entrada.
+
+## Registro y diagnóstico
+
+La app escribe eventos, fallos de conexión y errores no controlados en:
+
+```text
+%LOCALAPPDATA%\Cosecha\cosecha.log
+```
+
+No guarda contraseñas ni datos del `.env`. En modo ejemplo el log también
+se crea, pero la app funciona sin MySQL. Las pantallas cargan los datos en
+segundo plano cuando hay base real; si una consulta falla, muestran el
+ejemplo y dejan el detalle en el log.
 
 ## Base de datos
 
@@ -92,6 +105,31 @@ el pronóstico usa toda la serie y lo dice ("simulados" o "mixtos"). La
 migración `migrate_fase0.sql` agrega la columna, los índices y la vista
 `v_ventas_diarias_origen`; el pronóstico guarda además WAPE y sesgo.
 
+### Cajero al encender el equipo
+
+El cajero diario se lanza solo al iniciar sesión, de dos formas que se
+complementan:
+
+- Tarea programada `CosechaCajeroAlEncender` (se registra con
+  `scripts\registrar_al_encender.ps1`): arranca 15 s después del login,
+  reintenta si el equipo estaba apagado (`StartWhenAvailable`) y tiene un
+  límite de 15 min.
+- Acceso en la carpeta Inicio de Windows
+  (`CosechaCajeroAlEncender.bat`), que lanza el mismo
+  `scripts\al_encender.ps1` como respaldo.
+
+El script espera hasta ~2 minutos a que MySQL esté disponible, así que puede
+tardar un poco en generar las ventas del día. Un candado
+(`%LOCALAPPDATA%\Cosecha\cajero.lock`) impide que la tarea y el acceso del
+Startup corran el cajero a la vez. El resultado se consulta en:
+
+- `scripts\cajero_diario.log` (UTF-8): detalle de la corrida.
+- `%LOCALAPPDATA%\Cosecha\cajero_ultimo_estado.txt`: estado corto
+  (`ok (codigo 0, N s)` o `error: ...`).
+
+Si ya hay ventas simuladas del día, el cajero no repite la corrida; usa
+`python scripts\cajero_diario.py --force` para forzarla manualmente.
+
 ## Simulación con-vs-sin app
 
 ```powershell
@@ -113,6 +151,7 @@ main.py
 app/
   main_window.py          Ventana y navegación (QStackedWidget + guard de sesión)
   styles.py               Sistema visual fresco (papel, verde, menta)
+  logging_setup.py        Log local y errores no controlados
   data/
     mock_data.py          Datos de ejemplo: frutas, verduras y jugos (listas de dicts)
     store.py              Datos compartidos en memoria (sobrevive a la navegación)
@@ -122,6 +161,7 @@ app/
     params.py             Umbrales por defecto y parseo de parametros_sistema
     db.py                 Conexión MySQL desde .env (sin credenciales en código)
     repository.py         Puerta a la base con la forma del mock + auth + kardex
+    async_loader.py       Consultas en segundo plano para no congelar la UI
     export_csv.py         Export a CSV legible en Excel (BOM, anti-fórmulas)
   widgets/
     kpi_card.py           KPI minimalista con píldora de cambio
@@ -196,10 +236,12 @@ requirements-dev.txt      Dependencias de desarrollo y build
   datos y etiquetas. Con base, el precio promedio por unidad es real
   (ventas/unidades con centavos).
 - **Caja:** catálogo de 66 productos con buscador y filtro por categoría;
-  ticket con cantidades decimales (0.5 kg, 0.25 L) o enteras (piezas),
-  total y método de pago; al cobrar inserta la venta y sus renglones en
-  `ventas`/`detalle_ventas` dentro de una transacción, releyendo precio y
-  costo de la base y validando existencias con bloqueo. Muestra el folio.
+  el catálogo se carga una sola vez y el filtro trabaja en memoria (sin
+  consultar la base en cada tecla); ticket con cantidades decimales
+  (0.5 kg, 0.25 L) o enteras (piezas), total y método de pago; al cobrar
+  inserta la venta y sus renglones en `ventas`/`detalle_ventas` dentro de
+  una transacción, releyendo precio y costo de la base y validando
+  existencias con bloqueo. Muestra el folio.
 - **Ventas:** filtro por categoría (Frutas, Verduras, Jugos, Bebidas,
   Snacks y Abarrotes) + buscador, tabla con orden numérico y por texto sin
   acentos, y gráfica de ingresos por categoría (legible con 66 productos).

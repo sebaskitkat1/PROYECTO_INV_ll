@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QScrollArea, QVB
 
 from app import styles
 from app.data import analytics, mock_data, repository
+from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
 from app.data.store import get_inventory
 from app.widgets.chart_card import PreviewChartCard
@@ -32,6 +33,7 @@ class DashboardScreen(QWidget):
         parent=None,
     ):
         super().__init__(parent)
+        self.on_navigate = on_navigate
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -58,52 +60,38 @@ class DashboardScreen(QWidget):
         section_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(section_title)
 
-        content_layout.addLayout(self._build_kpi_row(on_navigate))
-        content_layout.addLayout(self._build_charts_row())
+        # contenedores vacios: primero se pinta la pantalla, luego llegan los datos
+        self.kpi_grid = QGridLayout()
+        self.kpi_grid.setSpacing(14)
+        content_layout.addLayout(self.kpi_grid)
+
+        self.charts_row = QHBoxLayout()
+        self.charts_row.setSpacing(16)
+        content_layout.addLayout(self.charts_row)
         content_layout.addStretch()
 
         scroll.setWidget(content)
         root.addWidget(scroll)
 
-    # -- secciones -----------------------------------------------------
+        self._load_dashboard()
 
-    def _build_kpi_row(self, on_navigate: Callable[[str], None]) -> QGridLayout:
-        # base primero, ejemplo si no hay conexion
+    # -- carga de datos -------------------------------------------------
+
+    def _load_dashboard(self) -> None:
+        if not async_disponible():
+            self._apply_dashboard(self._fetch_dashboard())
+            return
+        run_async(self, self._fetch_dashboard, self._apply_dashboard,
+                  lambda _mensaje: self._apply_dashboard(self._fallback_dashboard()))
+
+    @staticmethod
+    def _fetch_dashboard() -> dict:
         try:
             kpis = repository.dashboard_kpis()
         except DBError:
             kpis = analytics.dashboard_kpis(
                 mock_data.get_sales_detail(), mock_data.get_sales_last_7_days(), get_inventory()
             )
-        grid = QGridLayout()
-        grid.setSpacing(14)
-
-        cards = [
-            KpiCard(
-                "Ventas hoy", kpis["ventas_hoy"]["valor"], kpis["ventas_hoy"]["delta"],
-                kpis["ventas_hoy"]["positivo"], accent=styles.INK,
-                on_click=lambda: on_navigate("sales"),
-            ),
-            KpiCard(
-                "Precio por unidad", kpis["ticket_promedio"]["valor"], kpis["ticket_promedio"]["delta"],
-                kpis["ticket_promedio"]["positivo"], accent=styles.INK,
-                on_click=lambda: on_navigate("sales"),
-            ),
-            KpiCard(
-                "Productos vendidos", kpis["productos_vendidos"]["valor"], kpis["productos_vendidos"]["delta"],
-                kpis["productos_vendidos"]["positivo"], accent=styles.INK,
-                on_click=lambda: on_navigate("sales"),
-            ),
-            KpiCard(
-                "Stock en riesgo", kpis["stock_en_riesgo"]["valor"], accent=styles.CLAY,
-                on_click=lambda: on_navigate("inventory"),
-            ),
-        ]
-        for i, card in enumerate(cards):
-            grid.addWidget(card, 0, i)
-        return grid
-
-    def _build_charts_row(self) -> QHBoxLayout:
         try:
             sales_7 = repository.sales_last_7_days()
         except DBError:
@@ -116,13 +104,62 @@ class DashboardScreen(QWidget):
             inventario = repository.inventory_rows()
         except DBError:
             inventario = get_inventory()
+        return {"kpis": kpis, "sales_7": sales_7,
+                "detalle": detalle, "inventario": inventario}
 
-        row = QHBoxLayout()
-        row.setSpacing(16)
-        row.addWidget(self._sales_line_chart_card(sales_7), 1)
-        row.addWidget(self._top_products_chart_card(detalle), 1)
-        row.addWidget(self._coverage_chart_card(inventario), 1)
-        return row
+    @staticmethod
+    def _fallback_dashboard() -> dict:
+        return {
+            "kpis": analytics.dashboard_kpis(
+                mock_data.get_sales_detail(), mock_data.get_sales_last_7_days(),
+                get_inventory()),
+            "sales_7": mock_data.get_sales_last_7_days(),
+            "detalle": mock_data.get_sales_detail(),
+            "inventario": get_inventory(),
+        }
+
+    @staticmethod
+    def _clear_layout(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _apply_dashboard(self, data: dict) -> None:
+        self._clear_layout(self.kpi_grid)
+        self._clear_layout(self.charts_row)
+
+        kpis = data["kpis"]
+        cards = [
+            KpiCard(
+                "Ventas hoy", kpis["ventas_hoy"]["valor"], kpis["ventas_hoy"]["delta"],
+                kpis["ventas_hoy"]["positivo"], accent=styles.INK,
+                on_click=lambda: self.on_navigate("sales"),
+            ),
+            KpiCard(
+                "Precio por unidad", kpis["ticket_promedio"]["valor"], kpis["ticket_promedio"]["delta"],
+                kpis["ticket_promedio"]["positivo"], accent=styles.INK,
+                on_click=lambda: self.on_navigate("sales"),
+            ),
+            KpiCard(
+                "Productos vendidos", kpis["productos_vendidos"]["valor"], kpis["productos_vendidos"]["delta"],
+                kpis["productos_vendidos"]["positivo"], accent=styles.INK,
+                on_click=lambda: self.on_navigate("sales"),
+            ),
+            KpiCard(
+                "Stock en riesgo", kpis["stock_en_riesgo"]["valor"], accent=styles.CLAY,
+                on_click=lambda: self.on_navigate("inventory"),
+            ),
+        ]
+        for i, card in enumerate(cards):
+            self.kpi_grid.addWidget(card, 0, i)
+
+        self.charts_row.addWidget(self._sales_line_chart_card(data["sales_7"]), 1)
+        self.charts_row.addWidget(self._top_products_chart_card(data["detalle"]), 1)
+        self.charts_row.addWidget(self._coverage_chart_card(data["inventario"]), 1)
+
+    # -- secciones -----------------------------------------------------
 
     def _sales_line_chart_card(self, data: list[dict]) -> PreviewChartCard:
         card = PreviewChartCard(
