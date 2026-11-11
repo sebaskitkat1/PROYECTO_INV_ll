@@ -255,17 +255,8 @@ def product_demand_series(days: int = 90, origen: str | None = None) -> dict[str
             for nombre, valores in series.items()}
 
 
-def sales_report(desde: datetime.date, hasta: datetime.date,
-                 productos: list[str] | None = None,
-                 origen: str | None = None) -> dict:
-    """Reporte de ventas por producto y por dia en un rango de fechas.
-
-    Respeta el origen (`real`/`simulado`) y, si se pasan, los productos
-    elegidos. Devuelve totales por producto, serie diaria y totales generales.
-    """
-    _hay_base()
-    if hasta < desde:
-        desde, hasta = hasta, desde
+def _report_range(desde: datetime.date, hasta: datetime.date,
+                  nombres: list[str], origen: str | None) -> dict:
     # rango sobre fecha_hora (no DATE) para que use el indice de ventas
     filtros = ["v.estado = 'completada'",
                "v.fecha_hora >= %s", "v.fecha_hora < %s + INTERVAL 1 DAY"]
@@ -273,7 +264,6 @@ def sales_report(desde: datetime.date, hasta: datetime.date,
     if origen:
         filtros.append("v.origen = %s")
         parametros.append(origen)
-    nombres = [str(p) for p in (productos or []) if str(p).strip()]
     if nombres:
         marcas = ", ".join(["%s"] * len(nombres))
         filtros.append(f"p.nombre IN ({marcas})")
@@ -309,8 +299,31 @@ def sales_report(desde: datetime.date, hasta: datetime.date,
                "cantidad": float(r.get("cantidad") or 0),
                "ingresos": float(r.get("ingresos") or 0)} for r in por_dia]
     return {"por_producto": productos_out, "por_dia": diario,
-            "totales": analytics.sales_totals(productos_out),
-            "desde": desde, "hasta": hasta}
+            "totales": analytics.sales_totals(productos_out)}
+
+
+def sales_report(desde: datetime.date, hasta: datetime.date,
+                 productos: list[str] | None = None,
+                 origen: str | None = None,
+                 comparar: bool = False) -> dict:
+    """Reporte de ventas por producto y por dia en un rango de fechas.
+
+    Respeta el origen (`real`/`simulado`) y, si se pasan, los productos
+    elegidos. Devuelve totales por producto, serie diaria y totales generales.
+    Con `comparar=True` agrega el mismo periodo del ano anterior.
+    """
+    _hay_base()
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    nombres = [str(p) for p in (productos or []) if str(p).strip()]
+    actual = _report_range(desde, hasta, nombres, origen)
+    actual.update({"desde": desde, "hasta": hasta, "anterior": None})
+    if comparar:
+        desde_ant, hasta_ant = analytics.previous_period(desde, hasta)
+        anterior = _report_range(desde_ant, hasta_ant, nombres, origen)
+        anterior.update({"desde": desde_ant, "hasta": hasta_ant})
+        actual["anterior"] = anterior
+    return actual
 
 
 def clima_resumen() -> dict:

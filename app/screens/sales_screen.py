@@ -1,9 +1,12 @@
 """Pantalla de analisis de ventas: filtros, tabla e ingresos por categoria."""
 from __future__ import annotations
 
+import datetime
 from functools import partial
 from typing import Callable
 
+from matplotlib import dates as mdates
+from matplotlib.ticker import FuncFormatter
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -304,7 +307,7 @@ class SalesScreen(QWidget):
             self._apply_report(self._mock_report(desde, hasta, productos, origen))
             return
         tarea = partial(repository.sales_report, desde, hasta,
-                        productos or None, origen)
+                        productos or None, origen, comparar=True)
         if async_disponible():
             run_async(self, tarea, self._apply_report, self._on_report_error)
         else:
@@ -325,23 +328,38 @@ class SalesScreen(QWidget):
             "desde": desde,
             "hasta": hasta,
             "origen": origen,
+            "anterior": None,
             "ejemplo": True,
         }
 
     def _on_report_error(self, mensaje: str) -> None:
         self.report_totals.setText(f"No se pudo generar el reporte: {mensaje}")
 
+    @staticmethod
+    def _comparison_text(total: dict, anterior: dict | None) -> str:
+        """Variacion contra el mismo periodo del ano anterior, si hay datos."""
+        if not anterior:
+            return ""
+        previo = float((anterior.get("totales") or {}).get("ingresos") or 0)
+        actual = float(total.get("ingresos") or 0)
+        if not previo:
+            return " · sin ventas en el mismo periodo del año anterior"
+        var = analytics.pct_change(actual, previo)
+        return "" if var is None else f" · vs. año anterior {var:+.1f}%"
+
     def _apply_report(self, report: dict) -> None:
         self.report = report
         total = report.get("totales") or {}
         productos = report.get("por_producto") or []
         fuente = "ejemplo" if report.get("ejemplo") else repository.etiqueta_fuente()
-        self.report_totals.setText(
+        texto = (
             f"{len(productos)} productos · "
             f"{analytics.fmt_qty(float(total.get('unidades') or 0))} unidades · "
             f"{analytics.fmt_money(float(total.get('ingresos') or 0))} · "
             f"margen {float(total.get('margen_pond') or 0):.0f}% · {fuente}"
         )
+        texto += self._comparison_text(total, report.get("anterior"))
+        self.report_totals.setText(texto)
         self._populate_report_table(productos)
         self._draw_report_chart(report.get("por_dia") or [])
 
@@ -364,20 +382,42 @@ class SalesScreen(QWidget):
         canvas = self.report_canvas
         canvas.clear()
         ax = canvas.axes
-        if not por_dia:
+        puntos = []
+        for d in por_dia:
+            try:
+                fecha = datetime.date.fromisoformat(str(d["fecha"])[:10])
+            except ValueError:
+                continue
+            puntos.append((fecha, float(d.get("ingresos") or 0)))
+        if not puntos:
             ax.text(0.5, 0.5, "Sin ventas en el periodo", ha="center", va="center",
                     fontsize=10, color=styles.MUTED, transform=ax.transAxes)
             canvas.redraw()
             return
-        etiquetas = [str(d["fecha"])[5:] for d in por_dia]
-        valores = [float(d["ingresos"]) for d in por_dia]
-        posiciones = list(range(len(valores)))
-        ax.plot(posiciones, valores, color=styles.VERDE, marker="o", linewidth=2)
-        ax.fill_between(posiciones, valores, color=styles.MENTA_SOFT, alpha=0.35)
-        ax.set_xticks(posiciones)
-        ax.set_xticklabels(etiquetas, rotation=45, ha="right", fontsize=8)
+        # eje de fechas real, no posiciones: un hueco de dias no se disimula
+        xs, ys = [], []
+        for i, (fecha, valor) in enumerate(puntos):
+            if i and (fecha - puntos[i - 1][0]).days > analytics.GRAFICA_HUECO_DIAS:
+                xs.append(puntos[i - 1][0] + datetime.timedelta(days=1))
+                ys.append(float("nan"))
+            xs.append(fecha)
+            ys.append(valor)
+        ax.plot(xs, ys, color=styles.VERDE, marker="o", linewidth=2)
+        ax.fill_between(xs, ys, color=styles.MENTA_SOFT, alpha=0.35)
+        if (xs[-1] - xs[0]).days <= 1:
+            # un solo dia (o dos) no da rango al AutoDateLocator
+            ax.set_xlim(xs[0] - datetime.timedelta(days=1),
+                        xs[-1] + datetime.timedelta(days=1))
+            ax.xaxis.set_major_locator(mdates.DayLocator())
+        else:
+            ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=8))
+        ax.xaxis.set_major_formatter(
+            FuncFormatter(lambda x, _pos: analytics.etiqueta_corta(
+                mdates.num2date(x).date())))
+        ax.tick_params(axis="x", labelrotation=30, labelsize=8)
         ax.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         ax.set_ylabel("ingresos", fontsize=9, color=styles.MUTED)
+        ax.margins(x=0.02, y=0.15)
         canvas.redraw()
 
     def _export_report_csv(self) -> None:

@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 110 pruebas
+python -m unittest discover tests   # 117 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -249,8 +249,10 @@ requirements-dev.txt      Dependencias de desarrollo y build
   Incluye un **reporte por producto y periodo**: se eligen uno o varios
   productos (vacío = todos), fecha desde/hasta y origen (todos, real o
   simulado). Muestra totales de unidades, ingresos y margen, la evolución
-  diaria en una gráfica y el detalle por producto en tabla; el botón
-  Exportar CSV guarda ese detalle con el mismo formato seguro para Excel.
+  diaria en una gráfica con fechas reales (los huecos de días no se
+  disimulan) y el detalle por producto en tabla; si hay datos del año
+  anterior, agrega la variación contra el mismo periodo. El botón Exportar
+  CSV guarda ese detalle con el mismo formato seguro para Excel.
 - **Inventario:** stock editable con doble clic (decimales en kg/L, enteros
   en pzas; con base guarda en kardex), estado y cobertura recalculados con
   umbrales de `parametros_sistema`, alerta de críticos + alerta de lotes
@@ -272,12 +274,15 @@ requirements-dev.txt      Dependencias de desarrollo y build
   objetivo. Sin base muestra órdenes de ejemplo en solo lectura.
 - **Pronóstico:** regresión sobre fecha real con nivel en el último punto,
   estacionalidad semanal con 28+ días y 30 pasos diarios que arrancan hoy
-  (no en el pasado). El backtest usa el horizonte real en días calendario y
-  reporta WAPE, sesgo y cobertura contra ingenuo y media móvil; si no gana,
-  se marca preliminar. El reparto por producto compara 30 días contra 30
-  días y avisa cuántos días tuvieron venta. La pantalla etiqueta si los
-  datos son reales, simulados o mixtos. Con base, Guardar pronóstico
-  registra cabecera, 30 días, reparto, WAPE y sesgo; sin conexión solo se ve.
+  (no en el pasado). La gráfica muestra los últimos 30 días calendario,
+  corta la línea en huecos largos y marca aparte los picos fuera de escala
+  para que un día atípico no aplaste el resto de la serie. El backtest usa
+  el horizonte real en días calendario y reporta WAPE, sesgo y cobertura
+  contra ingenuo y media móvil; si no gana, se marca preliminar. El reparto
+  por producto compara 30 días contra 30 días y avisa cuántos días tuvieron
+  venta. La pantalla etiqueta si los datos son reales, simulados o mixtos.
+  Con base, Guardar pronóstico registra cabecera, 30 días, reparto, WAPE y
+  sesgo; sin conexión solo se ve.
 - **Interfaz:** títulos, tablas, gráficas y botones; la caja solo muestra
   un aviso si no hay conexión. Roles: Administrador (todo y bitácora),
   Gerente (sin bitácora) y Cajero (caja, ventas e inventario, sin
@@ -289,5 +294,5 @@ requirements-dev.txt      Dependencias de desarrollo y build
 2. Respaldo/restauración de MySQL y validación de recepción de compras
    end-to-end en un equipo destino.
 3. Impresión de ticket y corte de caja para la operación diaria.
-4. Reporte de ventas con comparación contra el mismo periodo del año
-   anterior y programación de envíos automáticos.
+4. Programación de envíos automáticos del reporte de ventas (correo o
+   carpeta compartida); la comparación contra el año anterior ya está.

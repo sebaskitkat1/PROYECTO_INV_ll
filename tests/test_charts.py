@@ -100,6 +100,15 @@ class TestReporteVentas(unittest.TestCase):
         screen._generate_report()
         self.assertEqual(len(screen.report["por_producto"]), len(screen.all_rows))
 
+    def test_comparacion_anual_con_y_sin_datos(self):
+        from app.screens.sales_screen import SalesScreen
+        actual = {"ingresos": 120.0}
+        previo = {"totales": {"ingresos": 100.0}}
+        self.assertIn("+20.0%", SalesScreen._comparison_text(actual, previo))
+        sin_datos = {"totales": {"ingresos": 0.0}}
+        self.assertIn("sin ventas", SalesScreen._comparison_text(actual, sin_datos))
+        self.assertEqual(SalesScreen._comparison_text(actual, None), "")
+
 
 class TestTarjetaGrafica(unittest.TestCase):
     @classmethod

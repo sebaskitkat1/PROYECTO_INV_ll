@@ -50,7 +50,7 @@ seguridad. También es idempotente.
 | `v_ventas_diarias_origen` (serie diaria por `origen`) | Pronóstico (reales vs simuladas) |
 | `v_ventas_por_producto` (categoría como dato) | Ventas |
 | `v_tendencia_producto` (30d vs 30d previos) | Ventas |
-| `ventas` + `detalle_ventas` filtradas por fecha/producto/origen | Reporte por producto y periodo |
+| `ventas` + `detalle_ventas` filtradas por fecha/producto/origen | Reporte por producto y periodo (incluye el mismo rango del año anterior) |
 | `v_estado_inventario` (estado, consumo, merma, días, lead time, punto de reorden, `sin_minimo`) | Inventario (tabla, ABC/XYZ, merma) |
 | `v_orden_compra_sugerida` (sugerido con cobertura, proveedor y costo) | Inventario (columna Sugerido), botón orden de compra, Compras |
 | `v_pareto_abc` (cortes A/B desde parámetros) | Gráfica ABC |

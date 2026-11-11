@@ -262,6 +262,80 @@ def report_daily_series(rows: list[dict]) -> list[dict]:
     return [acumulado[f] for f in sorted(acumulado)]
 
 
+def _menos_un_ano(fecha: _dt.date) -> _dt.date:
+    """Mismo dia del ano anterior; el 29 de febrero cae al 28."""
+    try:
+        return fecha.replace(year=fecha.year - 1)
+    except ValueError:
+        return fecha.replace(year=fecha.year - 1, day=28)
+
+
+def previous_period(desde: _dt.date, hasta: _dt.date) -> tuple[_dt.date, _dt.date]:
+    """Periodo equivalente del ano anterior, para comparar reportes."""
+    return _menos_un_ano(desde), _menos_un_ano(hasta)
+
+
+# -- ventana de la grafica de pronostico ---------------------------------
+
+GRAFICA_DIAS = 30
+GRAFICA_HUECO_DIAS = 2
+
+
+def chart_history_window(hist: list[tuple[_dt.date, float]],
+                         futuro: list[tuple[_dt.date, float]] | None = None,
+                         dias: int = GRAFICA_DIAS) -> list[tuple[_dt.date, float]]:
+    """Ultimos `dias` calendario de historia, alineados al pronostico.
+
+    La ventana termina el dia anterior al primer pronostico para que un
+    historico viejo no deje meses muertos en el eje X. Si no hay pronostico,
+    termina en el ultimo dato.
+    """
+    pares = sorted(hist, key=lambda p: p[0])
+    if not pares:
+        return []
+    fin = pares[-1][0]
+    if futuro:
+        fin = max(fin, futuro[0][0] - _dt.timedelta(days=1))
+    inicio = fin - _dt.timedelta(days=max(1, int(dias)) - 1)
+    return [(d, float(v)) for d, v in pares if d >= inicio]
+
+
+def _cuantil(ordenados: list[float], p: float) -> float:
+    if not ordenados:
+        return 0.0
+    k = (len(ordenados) - 1) * p
+    bajo = int(k)
+    alto = min(bajo + 1, len(ordenados) - 1)
+    return ordenados[bajo] + (ordenados[alto] - ordenados[bajo]) * (k - bajo)
+
+
+def chart_scale(hist: list[tuple[_dt.date, float]],
+                futuro: list[tuple[_dt.date, float]],
+                factor: float = 2.0) -> dict:
+    """Tope robusto del eje Y y puntos historicos que quedan fuera.
+
+    La cerca de Tukey (Q3 + factor * IQR) evita que un pico aislado aplaste
+    la escala del resto de la serie. Si no hay picos, devuelve `tope=None`
+    para dejar que matplotlib ajuste solo. El tope nunca recorta el pronostico.
+    """
+    hist_vals = [float(v) for _, v in hist]
+    fut_vals = [float(v) for _, v in futuro]
+    valores = sorted(hist_vals + fut_vals)
+    if not valores:
+        return {"tope": None, "fuera": []}
+    q1 = _cuantil(valores, 0.25)
+    q3 = _cuantil(valores, 0.75)
+    iqr = q3 - q1
+    if iqr > 0:
+        cerca = q3 + max(0.0, float(factor)) * iqr
+    else:
+        # serie casi plana: separa el pico sin dejar el eje en cero
+        cerca = max(q3 * 1.5, max(valores) * 0.5)
+    tope = max(cerca, (max(fut_vals) * 1.05) if fut_vals else cerca)
+    fuera = [(d, float(v)) for d, v in hist if float(v) > tope]
+    return {"tope": tope if fuera else None, "fuera": fuera}
+
+
 # -- pronostico ----------------------------------------------------------
 # regresion sobre fecha real (ordinal de la fecha, no posicion).
 # nivel = valor ajustado en el ultimo punto: f(1) cae un paso de

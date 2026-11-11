@@ -160,7 +160,11 @@ class PredictionScreen(QWidget):
         hoy = datetime.date.today()
         hist = []
         for d in mock_data.get_prediction_data():
-            f = analytics.parse_dia(d["dia"], hoy)
+            fecha = d.get("fecha")
+            if isinstance(fecha, str):
+                f = datetime.date.fromisoformat(fecha)
+            else:
+                f = analytics.parse_dia(d["dia"], hoy)
             if f is not None and d["historico"] is not None:
                 hist.append((f, float(d["historico"])))
         hist.sort()
@@ -184,20 +188,35 @@ class PredictionScreen(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(18, 16, 18, 16)
 
-        title = QLabel("Histórico y pronóstico · 30 días")
+        title = QLabel(
+            f"Histórico ({analytics.GRAFICA_DIAS} días) y pronóstico · 30 días")
         title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
         layout.addWidget(title)
 
-        fechas = [d for d, _ in hist]
-        huecos = sum(1 for a, b in zip(fechas, fechas[1:]) if (b - a).days > 1)
+        # ventana acotada: el historico lejano y el hueco de octubre no
+        # comprimen el pronostico contra 90 dias de eje X
+        visible = analytics.chart_history_window(hist, futuro)
+        if not visible and hist:
+            visible = [hist[-1]]
+        fechas = [d for d, _ in visible]
+        huecos = sum(1 for a, b in zip(fechas, fechas[1:])
+                     if (b - a).days > analytics.GRAFICA_HUECO_DIAS)
         if huecos:
             fuente_txt += f" · {huecos} hueco(s) sin venta"
+
+        # un pico aislado (p. ej. un dia con muchas ventas simuladas) no
+        # debe aplastar la escala: se recorta y se marca aparte
+        escala = analytics.chart_scale(visible, futuro)
+        tope = escala["tope"]
+        fuera = escala["fuera"]
+        if fuera:
+            fuente_txt += f" · {len(fuera)} día(s) fuera de escala"
         fuente = QLabel(fuente_txt)
         fuente.setStyleSheet(f"color: {styles.MUTED}; font-size: 11px;")
         layout.addWidget(fuente)
 
         canvas = MplCanvas(height=3.2)
-        if not hist:
+        if not visible:
             canvas.axes.text(0.5, 0.5, "Sin datos de ventas", ha="center",
                              va="center", fontsize=10, color=styles.MUTED,
                              transform=canvas.axes.transAxes)
@@ -205,31 +224,41 @@ class PredictionScreen(QWidget):
             layout.addWidget(canvas)
             return card
 
-        # corta la linea en huecos de mas de un dia para no inventar continuidad
+        # corta la linea en huecos largos para no inventar continuidad; los
+        # huecos de 1-2 dias se conectan para que la serie no quede en puntos
         xs, ys = [], []
-        for i, (d, v) in enumerate(hist):
-            if i and (d - hist[i - 1][0]).days > 1:
+        for i, (d, v) in enumerate(visible):
+            if i and (d - visible[i - 1][0]).days > analytics.GRAFICA_HUECO_DIAS:
                 xs.append(d - datetime.timedelta(days=1))
                 ys.append(None)
             xs.append(d)
-            ys.append(v)
+            ys.append(None if tope is not None and v > tope else v)
         cada = max(1, len(xs) // 18)
         canvas.axes.plot(
             xs, ys, color=styles.VERDE, linewidth=2.2,
             marker="o", markersize=4, markevery=cada, label="Histórico",
         )
-        x_pred = [hist[-1][0]]
-        y_pred = [hist[-1][1]]
-        if futuro and (futuro[0][0] - hist[-1][0]).days > 1:
-            x_pred.append(hist[-1][0] + datetime.timedelta(days=1))
-            y_pred.append(None)
-        x_pred += [d for d, _ in futuro]
-        y_pred += [v for _, v in futuro]
-        cada_pred = max(1, len(futuro) // 18) if futuro else 1
-        canvas.axes.plot(
-            x_pred, y_pred, color=styles.MENTA, linewidth=2, linestyle="--",
-            marker="o", markersize=4, markevery=cada_pred, label="Pronóstico",
-        )
+        if fuera:
+            canvas.axes.scatter(
+                [d for d, _ in fuera], [tope] * len(fuera),
+                marker="^", s=42, color=styles.CLAY, zorder=5,
+                label="Fuera de escala",
+            )
+            for d, v in fuera:
+                canvas.axes.annotate(
+                    analytics.fmt_money(v), (d, tope),
+                    textcoords="offset points", xytext=(0, 7),
+                    ha="center", fontsize=7, color=styles.CLAY,
+                )
+        if futuro:
+            # sin puente desde el ultimo dato: el pronostico parte de su
+            # propio nivel y no dibuja un salto artificial
+            canvas.axes.plot(
+                [d for d, _ in futuro], [v for _, v in futuro],
+                color=styles.MENTA, linewidth=2, linestyle="--",
+                marker="o", markersize=4,
+                markevery=max(1, len(futuro) // 18), label="Pronóstico",
+            )
         canvas.axes.axvline(hist[-1][0], color=styles.FAINT,
                             linestyle=":", linewidth=1)
         canvas.axes.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=10))
@@ -239,7 +268,9 @@ class PredictionScreen(QWidget):
         canvas.axes.tick_params(axis="x", labelrotation=30, labelsize=8)
         canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.axes.margins(x=0.01, y=0.12)
-        canvas.axes.legend(fontsize=8, frameon=False, loc="upper left")
+        if tope is not None:
+            canvas.axes.set_ylim(top=tope * 1.08)
+        canvas.axes.legend(fontsize=8, frameon=False, loc="best")
         canvas.redraw()
         layout.addWidget(canvas)
 

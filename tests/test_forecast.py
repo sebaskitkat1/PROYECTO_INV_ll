@@ -167,6 +167,57 @@ class TestReparto(unittest.TestCase):
         self.assertEqual(analytics.product_forecast_share([], 1000.0, 5), [])
 
 
+class TestGraficaPronostico(unittest.TestCase):
+    def test_ventana_acota_historia_y_termina_antes_del_pronostico(self):
+        base = dt.date(2026, 9, 1)
+        hist = [(base + dt.timedelta(days=i), 100.0 + i) for i in range(90)]
+        futuro = [(base + dt.timedelta(days=90 + i), 200.0) for i in range(5)]
+        visible = analytics.chart_history_window(hist, futuro)
+        self.assertEqual(visible[0][0], base + dt.timedelta(days=60))
+        self.assertEqual(visible[-1][0], base + dt.timedelta(days=89))
+        self.assertEqual(len(visible), 30)
+
+    def test_ventana_usa_ultimo_dato_si_no_hay_pronostico(self):
+        hist = [(dt.date(2026, 9, 1), 100.0), (dt.date(2026, 9, 2), 110.0)]
+        visible = analytics.chart_history_window(hist)
+        self.assertEqual(visible, hist)
+
+    def test_pico_aislado_queda_fuera_de_escala(self):
+        base = dt.date(2026, 11, 1)
+        hist = [(base + dt.timedelta(days=i), v) for i, v in enumerate(
+            [100.0, 110.0, 120.0, 130.0, 140.0, 900.0])]
+        futuro = [(base + dt.timedelta(days=6 + i), 150.0) for i in range(3)]
+        escala = analytics.chart_scale(hist, futuro)
+        self.assertIsNotNone(escala["tope"])
+        self.assertLess(escala["tope"], 900.0)
+        self.assertGreaterEqual(escala["tope"], 150.0 * 1.05)
+        self.assertEqual([v for _, v in escala["fuera"]], [900.0])
+
+    def test_sin_picos_no_fija_tope(self):
+        base = dt.date(2026, 11, 1)
+        hist = [(base + dt.timedelta(days=i), v) for i, v in enumerate(
+            [100.0, 110.0, 120.0, 130.0])]
+        futuro = [(base + dt.timedelta(days=4 + i), 140.0) for i in range(2)]
+        escala = analytics.chart_scale(hist, futuro)
+        self.assertIsNone(escala["tope"])
+        self.assertEqual(escala["fuera"], [])
+
+    def test_serie_plana_con_pico_tambien_se_recorta(self):
+        base = dt.date(2026, 11, 1)
+        hist = [(base + dt.timedelta(days=i), v) for i, v in enumerate(
+            [0.0, 0.0, 0.0, 0.0, 900.0])]
+        escala = analytics.chart_scale(hist, [])
+        self.assertIsNotNone(escala["tope"])
+        self.assertLess(escala["tope"], 900.0)
+        self.assertEqual([v for _, v in escala["fuera"]], [900.0])
+
+    def test_periodo_anterior_incluye_29_febrero(self):
+        desde, hasta = analytics.previous_period(
+            dt.date(2028, 2, 29), dt.date(2028, 3, 10))
+        self.assertEqual(desde, dt.date(2027, 2, 28))
+        self.assertEqual(hasta, dt.date(2027, 3, 10))
+
+
 class TestSignoColor(unittest.TestCase):
     def test_signo_y_color(self):
         from app.screens.prediction_screen import PredictionScreen

@@ -8,6 +8,11 @@ funciones por consultas que devuelvan lo mismo (listas de dicts).
 
 from __future__ import annotations
 
+import datetime as _dt
+
+_MESES = ("ene", "feb", "mar", "abr", "may", "jun",
+          "jul", "ago", "sep", "oct", "nov", "dic")
+
 
 def get_sales_last_7_days() -> list[dict]:
     return [
@@ -115,20 +120,21 @@ def get_purchase_order_detail(id_orden: int | None = None) -> list[dict]:
 
 
 def get_prediction_data() -> list[dict]:
-    # serie ordenada cronologicamente: 6 dias historicos + Hoy (pivote)
-    # + 6 dias de pronostico. Sin espacios/duplicados en etiquetas.
-    return [
-        {"dia": "25 Sep", "historico": 5100, "prediccion": None},
-        {"dia": "27 Sep", "historico": 4650, "prediccion": None},
-        {"dia": "29 Sep", "historico": 5300, "prediccion": None},
-        {"dia": "01 Oct", "historico": 5600, "prediccion": None},
-        {"dia": "03 Oct", "historico": 5200, "prediccion": None},
-        {"dia": "05 Oct", "historico": 5850, "prediccion": None},
-        {"dia": "Hoy", "historico": 6100, "prediccion": 6100},
-        {"dia": "08 Oct", "historico": None, "prediccion": 6180},
-        {"dia": "10 Oct", "historico": None, "prediccion": 6420},
-        {"dia": "12 Oct", "historico": None, "prediccion": 6310},
-        {"dia": "15 Oct", "historico": None, "prediccion": 6680},
-        {"dia": "18 Oct", "historico": None, "prediccion": 6840},
-        {"dia": "25 Oct", "historico": None, "prediccion": 6590},
-    ]
+    """Serie de ejemplo diaria de 30 dias, terminando hoy.
+
+    Un punto por dia (sin huecos) para que la grafica de pronostico se vea
+    como la de la base real. Los valores siguen un patron semanal suave.
+    """
+    hoy = _dt.date.today()
+    patron = (0.92, 0.98, 1.04, 1.10, 1.18, 1.24, 0.95)  # lun..dom
+    filas = []
+    for k in range(29, -1, -1):
+        fecha = hoy - _dt.timedelta(days=k)
+        base = 5200 + (29 - k) * 22
+        filas.append({
+            "dia": f"{fecha.day:02d} {_MESES[fecha.month - 1]}",
+            "fecha": fecha.isoformat(),
+            "historico": round(base * patron[fecha.weekday()], 2),
+            "prediccion": None,
+        })
+    return filas
