@@ -159,7 +159,8 @@ class InventoryScreen(QWidget):
         try:
             datos["demand"] = repository.product_demand_series(days=90)
         except DBError:
-            pass
+            if not repository.activa():
+                datos["demand"] = mock_data.get_demand_series()
         try:
             datos["clima"] = repository.clima_resumen()
         except DBError:
@@ -172,7 +173,7 @@ class InventoryScreen(QWidget):
                 "params": params.defaults(),
                 "pareto": mock_data.get_pareto_data(),
                 "expiry": [],
-                "demand": {},
+                "demand": mock_data.get_demand_series(),
                 "clima": {}}
 
     def _apply_data(self, datos: dict) -> None:
@@ -332,15 +333,23 @@ class InventoryScreen(QWidget):
         lead = row.get("leadTimeDias")
         if lead is None:
             lead = self.params.get("lead_time_default", 2.0)
-        seguridad = self.params.get("dias_seguridad", 1.0)
-        punto = analytics.reorder_point(row, lead, seguridad)
+        seguridad = row.get("stockSeguridad")
+        if seguridad is None:
+            seguridad = (float(row.get("consumoDiario") or 0)
+                         * self.params.get("dias_seguridad", 1.0))
+        punto = row.get("puntoReorden")
+        if punto is None:
+            punto = analytics.reorder_point(
+                row, lead, self.params.get("dias_seguridad", 1.0),
+                stock_seguridad=seguridad)
         if row.get("estado") not in ("critico", "advertencia") and \
-                float(row.get("stockActual") or 0) > punto:
+                float(row.get("stockActual") or 0) > float(punto):
             return 0
         return analytics.reorder_qty(
             row, self.params.get("objetivo_reorden", 2.0),
-            lead_time=lead, dias_seguridad=seguridad,
-            dias_cobertura=self.params.get("dias_cobertura", 7.0))
+            lead_time=lead, dias_seguridad=self.params.get("dias_seguridad", 1.0),
+            dias_cobertura=self.params.get("dias_cobertura", 7.0),
+            stock_seguridad=seguridad)
 
     def _export_order(self) -> None:
         bajos = [i for i in self.inventory if self._sugerido_row(i) > 0]
@@ -369,18 +378,20 @@ class InventoryScreen(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Guardar orden de compra", "orden_compra.csv", "CSV (*.csv)")
         if not path:
             return
-        # El sugerido cubre lead time + seguridad + cobertura objetivo.
+        # El sugerido cubre lead time + colchón + cobertura objetivo.
         filas = []
         for r in sorted(bajos, key=lambda r: ESTADO_ORDEN[r["estado"]]):
             fila = {k: r.get(k, "") for k in
                     ["nombre", "stockActual", "stockMinimo", "consumoDiario",
-                     "diasAgotar", "puntoReorden", "leadTimeDias", "estado"]}
+                     "diasAgotar", "puntoReorden", "leadTimeDias", "estado",
+                     "xyzClase", "stockSeguridad"]}
             fila["sugerido"] = self._sugerido_row(r)
             filas.append(fila)
         try:
             n = export_csv.guardar_csv(
                 path, ["nombre", "stockActual", "stockMinimo", "consumoDiario",
-                       "diasAgotar", "puntoReorden", "leadTimeDias", "estado", "sugerido"], filas)
+                       "diasAgotar", "puntoReorden", "leadTimeDias", "estado",
+                       "xyzClase", "stockSeguridad", "sugerido"], filas)
         except export_csv.ExportError as e:
             QMessageBox.warning(self, "Orden de compra", str(e))
             return
@@ -396,15 +407,19 @@ class InventoryScreen(QWidget):
 
     def _build_table(self) -> QTableWidget:
         columns = ["Nombre Producto", "Stock Actual", "Stock Mínimo",
-                   "Días Para Agotar", "Estado", "Merma", "Sugerido"]
+                   "Días Para Agotar", "Estado", "XYZ", "Merma", "Sugerido"]
         table = QTableWidget(0, len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(5).setToolTip(
+            "Clase de variabilidad de la demanda (90 días):\n"
+            "X estable, Y media, Z errática.\n"
+            "El stock de seguridad usa z por clase y la desviación diaria.")
+        table.horizontalHeaderItem(6).setToolTip(
             "Merma y caducidad registradas en la ventana de consumo.\n"
             "Se reparten entre los días de la ventana (no todo en un día).")
-        table.horizontalHeaderItem(6).setToolTip(
+        table.horizontalHeaderItem(7).setToolTip(
             "Cantidad sugerida = cobertura objetivo - stock - pedidos pendientes.\n"
-            "Incluye lead time del proveedor y días de stock de seguridad.")
+            "Incluye lead time, stock de seguridad (XYZ) y cobertura objetivo.")
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.DoubleClicked | QTableWidget.AnyKeyPressed)
         table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -466,6 +481,37 @@ class InventoryScreen(QWidget):
             estado_item.setFlags(estado_item.flags() & ~Qt.ItemIsEditable)
             tbl.setItem(r, 4, estado_item)
 
+            xyz = row.get("xyzClase")
+            xyz_txt = xyz if xyz in ("X", "Y", "Z") else "—"
+            xyz_item = QTableWidgetItem(xyz_txt)
+            xyz_item.setTextAlignment(Qt.AlignCenter)
+            xyz_item.setFlags(xyz_item.flags() & ~Qt.ItemIsEditable)
+            xyz_item.setForeground(QColor({
+                "X": styles.VERDE, "Y": styles.HONEY, "Z": styles.CLAY,
+            }.get(xyz_txt, styles.MUTED)))
+            font = xyz_item.font()
+            font.setBold(True)
+            xyz_item.setFont(font)
+            partes = [f"Clase XYZ: {xyz_txt}"]
+            cv = row.get("xyzCv")
+            sigma = row.get("xyzSigma")
+            dias_xyz = int(row.get("xyzDias") or 0)
+            if cv is not None:
+                partes.append(f"CV {float(cv):.2f}")
+            if sigma is not None:
+                partes.append(
+                    f"σ {analytics.fmt_qty(float(sigma))} {row.get('unidad', '')}/día")
+            if dias_xyz:
+                partes.append(f"{dias_xyz} días con venta")
+            if xyz_txt == "—":
+                partes.append("Sin datos suficientes; colchón por días")
+            else:
+                partes.append(
+                    f"Seguridad {analytics.fmt_qty(float(row.get('stockSeguridad') or 0))} "
+                    f"{row.get('unidad', '')}")
+            xyz_item.setToolTip(" · ".join(partes))
+            tbl.setItem(r, 5, xyz_item)
+
             merma = float(row.get("mermaVentana") or 0)
             merma_item = NumericItem(analytics.fmt_qty(merma), merma)
             merma_item.setFlags(merma_item.flags() & ~Qt.ItemIsEditable)
@@ -475,7 +521,7 @@ class InventoryScreen(QWidget):
             merma_item.setToolTip(
                 f"Merma/caducidad en la ventana: {analytics.fmt_qty(merma)} "
                 f"{row.get('unidad', '')}")
-            tbl.setItem(r, 5, merma_item)
+            tbl.setItem(r, 6, merma_item)
 
             sugerido = self._sugerido_row(row)
             sugerido_item = NumericItem(str(sugerido), sugerido)
@@ -485,7 +531,7 @@ class InventoryScreen(QWidget):
                 font = sugerido_item.font()
                 font.setBold(True)
                 sugerido_item.setFont(font)
-            tbl.setItem(r, 6, sugerido_item)
+            tbl.setItem(r, 7, sugerido_item)
 
         tbl.setMinimumHeight(min(40 * len(rows) + 40, 300) if rows else 120)
         tbl.resizeColumnsToContents()
@@ -656,7 +702,8 @@ class InventoryScreen(QWidget):
         clases = {"X": 0, "Y": 0, "Z": 0}
         cvs: dict[str, list[float]] = {"X": [], "Y": [], "Z": []}
         for serie in self.demand_series.values():
-            info = analytics.xyz_class(serie)
+            info = analytics.xyz_class(
+                serie, self.params["xyz_corte_x"], self.params["xyz_corte_y"])
             clase = info.get("clase")
             if clase in clases:
                 clases[clase] += 1

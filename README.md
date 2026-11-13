@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 117 pruebas
+python -m unittest discover tests   # 123 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
@@ -77,6 +77,7 @@ mysql -u root -p < db/migrate_inventario_recetas.sql
 mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 mysql -u root -p < db/migrate_fase0.sql
 mysql -u root -p < db/migrate_fase2.sql
+mysql -u root -p < db/migrate_fase5.sql
 # 2. Copiar .env.example como .env y poner tus valores (nunca se sube)
 # 3. Datos de prueba:  CALL sp_generar_ventas_demo(60);
 # 4. Dar de alta tu contraseña:
@@ -86,9 +87,10 @@ python -c "import bcrypt; print(bcrypt.hashpw(b'TU_CLAVE', bcrypt.gensalt()).dec
 
 Los umbrales de inventario (advertencia, reorden, caducidad, días de
 alerta, cortes ABC, ventana de consumo, lead time por defecto, días de
-seguridad y cobertura) se leen de `parametros_sistema`; sin base se usan
-los mismos valores por defecto. Los roles salen de `roles`:
-Administrador ve todo y consulta la bitácora; Gerente no ve bitácora;
+seguridad y cobertura, ventana/cortes XYZ y factores z) se leen de
+`parametros_sistema`; sin base se usan los mismos valores por defecto.
+Los roles salen de `roles`: Administrador ve todo y consulta la bitácora;
+Gerente no ve bitácora;
 Cajero registra ventas en Caja y no ve pronóstico ni compras. Sin base se
 entra en modo Ejemplo: se puede recorrer la app, pero no comprar ni escribir.
 
@@ -188,6 +190,7 @@ db/
   migrate_kpi_precio_unidad.sql   KPI de precio promedio por unidad corregido
   migrate_fase0.sql               Origen real/simulado, WAPE/sesgo y vista por origen
   migrate_fase2.sql               Consumo real, merma, lead time y stock de seguridad
+  migrate_fase5.sql               Clase XYZ y stock de seguridad estadístico
   diagrama_er.*           Diagrama entidad-relación (general y por módulo)
   README_datos.md         Mapeo vista↔pantalla y contratos
 scripts/
@@ -259,14 +262,17 @@ requirements-dev.txt      Dependencias de desarrollo y build
   por caducar con purga, orden de compra con cantidad sugerida, cobertura
   de los 10 ingredientes más urgentes, distribución ABC (A/B/C) con cortes
   configurables y variabilidad XYZ de la demanda (X estable, Y media,
-  Z errática) sobre 90 días. La tabla muestra la **merma** de la ventana de
-  consumo y la tarjeta **Riesgo calor** cuenta los productos sin
-  refrigeración que el clima del mes puede dañar. El consumo diario usa los
-  días con venta (no un divisor fijo de 30) y suma merma/caducidad; la
-  columna **Sugerido** y el punto de reorden incluyen el lead time del
-  proveedor y días de stock de seguridad.
+  Z errática) sobre 90 días. La tabla muestra la **clase XYZ**, el **CV** y
+  la **merma** de la ventana de consumo; la tarjeta **Riesgo calor** cuenta
+  los productos sin refrigeración que el clima del mes puede dañar. El
+  consumo diario usa los días con venta (no un divisor fijo de 30) y suma
+  merma/caducidad. El **stock de seguridad** se calcula con
+  `z(clase) × sigma × sqrt(lead time)` y, si no hay días suficientes, con
+  el respaldo por días; la columna **Sugerido** y el punto de reorden
+  incluyen el lead time del proveedor, ese colchón y la cobertura objetivo.
   Con base, el botón genera las órdenes con `sp_generar_ordenes_compra`;
-  sin conexión exporta el CSV con consumo, lead time y punto de reorden.
+  sin conexión exporta el CSV con consumo, clase XYZ, colchón, lead time y
+  punto de reorden.
 - **Compras:** lista las órdenes por estado, muestra proveedor, fecha, total
   y detalle; genera las sugeridas y recibe una orden completa con
   `sp_recibir_orden_compra`, refrescando el inventario. La cantidad sugerida
@@ -296,3 +302,6 @@ requirements-dev.txt      Dependencias de desarrollo y build
 3. Impresión de ticket y corte de caja para la operación diaria.
 4. Programación de envíos automáticos del reporte de ventas (correo o
    carpeta compartida); la comparación contra el año anterior ya está.
+5. Acumular más ventas reales para que la clase XYZ y el stock de
+   seguridad dejen de depender de los datos simulados, y validar con el
+   dueño los niveles de servicio (`z`) por clase.

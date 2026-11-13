@@ -130,41 +130,54 @@ def daily_use(item: dict) -> float:
 
 
 def reorder_point(item: dict, lead_time: float = 2.0,
-                  dias_seguridad: float = 1.0) -> float:
-    """Punto de reorden: minimo manual o consumo durante lead time + seguridad.
+                  dias_seguridad: float = 1.0,
+                  stock_seguridad: float | None = None) -> float:
+    """Punto de reorden: minimo manual o demanda de lead time + colchon.
 
-    Sin consumo conocido solo aplica el minimo, igual que antes. Con consumo,
-    el punto crece con el tiempo de entrega y los dias de colchon.
+    Si `stock_seguridad` viene de la vista XYZ se usa tal cual; si no, el
+    colchon se calcula por dias de consumo. Sin consumo solo aplica el
+    minimo (o el colchon, si existe).
     """
     consumo = float(item.get("consumoDiario") or 0)
     minimo = float(item.get("stockMinimo") or 0)
     lead = 2.0 if lead_time is None else float(lead_time)
-    seguridad = 1.0 if dias_seguridad is None else float(dias_seguridad)
+    if stock_seguridad is None:
+        seguro_dias = 1.0 if dias_seguridad is None else float(dias_seguridad)
+        seguridad = consumo * seguro_dias
+    else:
+        seguridad = max(0.0, float(stock_seguridad))
     if consumo <= 0:
-        return minimo
-    return max(minimo, consumo * (lead + seguridad))
+        return max(minimo, seguridad)
+    return max(minimo, consumo * lead + seguridad)
 
 
 def reorder_qty(item: dict, objetivo: float = 2.0, *,
                 lead_time: float = 2.0, dias_seguridad: float = 1.0,
-                dias_cobertura: float = 7.0) -> int:
-    """Cantidad sugerida para cubrir lead time, seguridad y cobertura.
+                dias_cobertura: float = 7.0,
+                stock_seguridad: float | None = None) -> int:
+    """Cantidad sugerida para cubrir lead time, colchon y cobertura.
 
     Sin consumo usa la regla historica (minimo x objetivo - stock). Con
     consumo toma el mayor entre esa regla y los dias de cobertura, para no
-    pedir de menos cuando el minimo quedo viejo.
+    pedir de menos cuando el minimo quedo viejo. `stock_seguridad` permite
+    usar el colchon estadistico de la vista XYZ en lugar de dias fijos.
     """
     stock = float(item.get("stockActual") or 0)
     minimo = float(item.get("stockMinimo") or 0)
     consumo = float(item.get("consumoDiario") or 0)
     objetivo = 2.0 if objetivo is None else float(objetivo)
     lead = 2.0 if lead_time is None else float(lead_time)
-    seguridad = 1.0 if dias_seguridad is None else float(dias_seguridad)
     cobertura = 7.0 if dias_cobertura is None else float(dias_cobertura)
-    if consumo > 0:
-        nivel = max(minimo * objetivo, consumo * (lead + seguridad + cobertura))
+    if stock_seguridad is None:
+        seguro_dias = 1.0 if dias_seguridad is None else float(dias_seguridad)
+        seguridad = consumo * seguro_dias
     else:
-        nivel = minimo * objetivo
+        seguridad = max(0.0, float(stock_seguridad))
+    if consumo > 0:
+        nivel = max(minimo * objetivo,
+                    consumo * (lead + cobertura) + seguridad)
+    else:
+        nivel = max(minimo * objetivo, seguridad)
     return max(0, math.ceil(nivel - stock))
 
 
@@ -206,12 +219,14 @@ def abc_summary(clases: list[dict]) -> list[dict]:
 
 XYZ_CORTE_X = 0.5
 XYZ_CORTE_Y = 1.0
+XYZ_Z_POR_CLASE = {"X": 1.28, "Y": 1.65, "Z": 2.33}
 
 
-def xyz_class(serie: list[float]) -> dict:
+def xyz_class(serie: list[float], corte_x: float = XYZ_CORTE_X,
+              corte_y: float = XYZ_CORTE_Y) -> dict:
     """Clasifica la demanda diaria por coeficiente de variacion (CV).
 
-    X: demanda estable (CV <= 0.5), Y: media (CV <= 1.0), Z: erratica.
+    X: demanda estable (CV <= corte_x), Y: media (CV <= corte_y), Z: erratica.
     La serie debe traer un valor por dia del periodo (0 en dias sin venta):
     los ceros cuentan porque la intermitencia tambien es variabilidad.
     """
@@ -225,8 +240,30 @@ def xyz_class(serie: list[float]) -> dict:
     var = sum((v - media) ** 2 for v in valores) / n
     desv = math.sqrt(var)
     cv = desv / media
-    clase = "X" if cv <= XYZ_CORTE_X else ("Y" if cv <= XYZ_CORTE_Y else "Z")
+    clase = "X" if cv <= corte_x else ("Y" if cv <= corte_y else "Z")
     return {"clase": clase, "cv": cv, "media": media, "desv": desv, "n": n}
+
+
+def xyz_safety_stock(sigma: float | None, lead_time: float | None,
+                     clase: str | None, *,
+                     z_por_clase: dict[str, float] | None = None,
+                     consumo_diario: float | None = None,
+                     dias_seguridad: float | None = 1.0,
+                     dias_con_datos: int = 0,
+                     min_dias: int = 7) -> float:
+    """Colchon estadistico por clase XYZ, con respaldo por dias.
+
+    Formula: z * sigma * sqrt(lead_time). La clase y la desviacion salen de
+    la demanda diaria de la ventana XYZ. Si no hay clase valida o no hay
+    suficientes dias con venta, se usa consumo_diario * dias_seguridad.
+    """
+    lead = max(1.0, float(lead_time if lead_time is not None else 2.0))
+    if clase in XYZ_Z_POR_CLASE and int(dias_con_datos) >= int(min_dias):
+        z = (z_por_clase or XYZ_Z_POR_CLASE).get(str(clase))
+        if z is not None:
+            return max(0.0, float(z) * max(0.0, float(sigma or 0)) * math.sqrt(lead))
+    seguro = 1.0 if dias_seguridad is None else float(dias_seguridad)
+    return max(0.0, float(consumo_diario or 0) * seguro)
 
 
 def abc_xyz_matrix(abc: list[dict], xyz: dict[str, dict]) -> list[dict]:

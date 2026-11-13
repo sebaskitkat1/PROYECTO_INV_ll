@@ -141,6 +141,10 @@ def map_inventario_row(r: dict) -> dict:
     lead = r.get("lead_time_dias")
     punto = r.get("punto_reorden")
     sugerido = r.get("sugerido")
+    xyz_clase = r.get("xyz_clase")
+    xyz_cv = r.get("xyz_cv")
+    xyz_sigma = r.get("xyz_sigma")
+    xyz_media = r.get("xyz_media")
     return {"id_ingrediente": int(r["id_ingrediente"]),
             "nombre": str(r["nombre"]),
             "unidad": str(r.get("unidad") or "kg"),
@@ -153,6 +157,11 @@ def map_inventario_row(r: dict) -> dict:
             "puntoReorden": None if punto is None else float(punto),
             "stockSeguridad": float(r.get("stock_seguridad") or 0),
             "mermaVentana": float(r.get("merma_ventana") or 0),
+            "xyzClase": None if not xyz_clase else str(xyz_clase),
+            "xyzCv": None if xyz_cv is None else float(xyz_cv),
+            "xyzSigma": None if xyz_sigma is None else float(xyz_sigma),
+            "xyzMedia": None if xyz_media is None else float(xyz_media),
+            "xyzDias": int(r.get("xyz_dias_con_datos") or 0),
             "sugerido": None if sugerido is None else int(sugerido),
             "proveedor": str(r.get("proveedor") or "")}
 
@@ -208,7 +217,8 @@ def inventory_rows() -> list[dict]:
         "SELECT e.id_ingrediente, e.nombre, e.unidad, e.stock_actual, "
         "e.stock_minimo, e.consumo_diario, e.dias_agotar, e.estado, "
         "e.lead_time_dias, e.punto_reorden, e.stock_seguridad, "
-        "e.merma_ventana, o.sugerido, o.proveedor "
+        "e.merma_ventana, e.xyz_clase, e.xyz_cv, e.xyz_sigma, "
+        "e.xyz_media, e.xyz_dias_con_datos, o.sugerido, o.proveedor "
         "FROM v_estado_inventario e "
         "LEFT JOIN v_orden_compra_sugerida o "
         "  ON o.id_sucursal = e.id_sucursal "

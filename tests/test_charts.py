@@ -47,6 +47,10 @@ class TestXYZ(unittest.TestCase):
         self.assertEqual(analytics.xyz_class([10, 0, 0, 0])["clase"], "Z")
         self.assertEqual(analytics.xyz_class([0, 0, 0])["clase"], "—")
         self.assertIsNone(analytics.xyz_class([])["cv"])
+        # Los cortes salen de parametros_sistema; se pueden endurecer.
+        self.assertEqual(
+            analytics.xyz_class([10, 0, 10, 5], corte_x=0.1, corte_y=0.2)["clase"],
+            "Z")
 
     def test_matriz_abc_xyz_cruza_productos(self):
         abc = [

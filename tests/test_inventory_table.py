@@ -45,6 +45,15 @@ class TestInventarioTabla(unittest.TestCase):
     def test_llenado_sin_corruptas(self):
         self.assertEqual(_falla_filas(self.s), [])
 
+    def test_columna_xyz_coincide_con_el_ejemplo(self):
+        self.assertEqual(self.s.table.columnCount(), 8)
+        self.assertEqual(self.s.table.horizontalHeaderItem(5).text(), "XYZ")
+        inv = {i["nombre"]: i for i in store.get_inventory()}
+        for r in range(self.s.table.rowCount()):
+            nombre = self.s.table.item(r, 0).text()
+            esperado = inv[nombre].get("xyzClase") or "—"
+            self.assertEqual(self.s.table.item(r, 5).text(), esperado)
+
     def test_orden_usuario_sobrevive_recarga(self):
         self.s.table.sortItems(1, Qt.DescendingOrder)
         antes = [self.s.table.item(r, 0).text() for r in range(self.s.table.rowCount())]

@@ -9,6 +9,7 @@ funciones por consultas que devuelvan lo mismo (listas de dicts).
 from __future__ import annotations
 
 import datetime as _dt
+import math
 
 _MESES = ("ene", "feb", "mar", "abr", "may", "jun",
           "jul", "ago", "sep", "oct", "nov", "dic")
@@ -54,6 +55,44 @@ def get_inventory() -> list[dict]:
         {"nombre": "Jitomate (kg)", "unidad": "kg", "stockActual": 14, "stockMinimo": 16, "diasAgotar": 3, "estado": "critico"},
         {"nombre": "Jugo natural (L)", "unidad": "L", "stockActual": 20, "stockMinimo": 18, "diasAgotar": 6, "estado": "advertencia"},
     ]
+
+
+def get_demand_series(dias: int = 90) -> dict[str, list[float]]:
+    """Serie diaria determinista para la clasificacion XYZ del ejemplo.
+
+    Cada ingrediente tiene un perfil distinto (estable, media o erratica)
+    para que la tabla y la grafica XYZ muestren las tres clases. La serie
+    termina hoy y no depende de la base.
+    """
+    hoy = _dt.date.today()
+    dias = max(1, int(dias))
+    perfiles = {
+        # nombre: (media diaria, amplitud semanal, cero cada N dias)
+        "Manzana": (2.2, 0.05, 0),
+        "Plátano": (3.5, 0.08, 0),
+        "Naranja": (5.0, 0.35, 0),
+        "Mango": (2.5, 0.20, 4),
+        "Fresa": (3.0, 1.20, 2),
+        "Uva": (2.4, 0.30, 5),
+        "Piña": (4.0, 0.10, 0),
+        "Sandía": (1.5, 0.10, 0),
+        "Jitomate": (4.0, 1.00, 2),
+        "Jugo natural": (3.0, 0.40, 0),
+    }
+    series: dict[str, list[float]] = {}
+    for nombre, (media, amplitud, cada_ceros) in perfiles.items():
+        valores = []
+        for k in range(dias - 1, -1, -1):
+            fecha = hoy - _dt.timedelta(days=k)
+            paso = dias - 1 - k
+            factor = 1.0 + amplitud * math.sin(paso / 7.0 * 2 * math.pi)
+            factor *= (0.95, 1.0, 1.02, 1.05, 1.12, 1.18, 0.92)[fecha.weekday()]
+            valor = max(0.0, media * factor)
+            if cada_ceros and paso % cada_ceros == 0:
+                valor = 0.0
+            valores.append(round(valor, 2))
+        series[nombre] = valores
+    return series
 
 
 def get_rotation_data() -> list[dict]:

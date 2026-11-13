@@ -13,6 +13,14 @@ DEFAULTS: dict[str, float] = {
     "lead_time_default": 2.0,
     "dias_seguridad": 1.0,
     "dias_cobertura": 7.0,
+    # Fase 5: clasificacion XYZ y stock de seguridad estadistico.
+    "xyz_ventana_dias": 90.0,
+    "xyz_min_dias": 7.0,
+    "xyz_corte_x": 0.5,
+    "xyz_corte_y": 1.0,
+    "z_xyz_x": 1.28,
+    "z_xyz_y": 1.65,
+    "z_xyz_z": 2.33,
 }
 
 

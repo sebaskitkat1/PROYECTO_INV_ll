@@ -18,6 +18,7 @@ mysql -u root -p < db/migrate_inventario_recetas.sql
 mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 mysql -u root -p < db/migrate_fase0.sql
 mysql -u root -p < db/migrate_fase2.sql
+mysql -u root -p < db/migrate_fase5.sql
 ```
 
 `migrate_catalogo_pos.sql` deja 66 productos activos en 6 categorías.
@@ -40,6 +41,12 @@ Es idempotente.
 entre los días con venta (no entre 30 fijo), suma merma/caducidad y el
 sugerido incluye el lead time del proveedor principal y el stock de
 seguridad. También es idempotente.
+`migrate_fase5.sql` agrega la ventana y los cortes XYZ (`xyz_ventana_dias`,
+`xyz_min_dias`, `xyz_corte_x`, `xyz_corte_y`) y los factores de servicio
+(`z_xyz_x`, `z_xyz_y`, `z_xyz_z`). Reemplaza las mismas vistas para calcular
+la clase XYZ de cada ingrediente, la desviación diaria y el colchón
+estadístico `z × sigma × sqrt(lead time)`; si no hay días suficientes usa el
+respaldo por días (`consumo_diario × dias_seguridad`). Es idempotente.
 
 ## Mapeo vista ↔ pantalla
 
@@ -51,8 +58,8 @@ seguridad. También es idempotente.
 | `v_ventas_por_producto` (categoría como dato) | Ventas |
 | `v_tendencia_producto` (30d vs 30d previos) | Ventas |
 | `ventas` + `detalle_ventas` filtradas por fecha/producto/origen | Reporte por producto y periodo (incluye el mismo rango del año anterior) |
-| `v_estado_inventario` (estado, consumo, merma, días, lead time, punto de reorden, `sin_minimo`) | Inventario (tabla, ABC/XYZ, merma) |
-| `v_orden_compra_sugerida` (sugerido con cobertura, proveedor y costo) | Inventario (columna Sugerido), botón orden de compra, Compras |
+| `v_estado_inventario` (estado, consumo, merma, días, lead time, clase XYZ, CV, sigma, colchón, punto de reorden, `sin_minimo`) | Inventario (tabla, ABC/XYZ, merma) |
+| `v_orden_compra_sugerida` (sugerido con colchón XYZ, cobertura, proveedor y costo) | Inventario (columna Sugerido), botón orden de compra, Compras |
 | `v_pareto_abc` (cortes A/B desde parámetros) | Gráfica ABC |
 | `v_lotes_por_caducar` | Alerta de caducidad |
 | `v_productos_temporada`, `v_vida_util_clima` | Compras (qué pedir según mes y calor), Inventario (tarjeta Riesgo calor) |
@@ -83,17 +90,29 @@ seguridad. También es idempotente.
   reparte entre la ventana para no inflar un evento aislado.
 - `lead_time_dias` sale de `proveedores.dias_entrega` del proveedor principal;
   si no hay principal usa `lead_time_default`.
-- `punto_reorden = max(stock_minimo, consumo_diario * (lead_time + dias_seguridad))`.
+- `xyz_clase` es `X` (CV <= `xyz_corte_x`), `Y` (CV <= `xyz_corte_y`) o
+  `Z` (más errática); es `NULL` si no hay ventas o menos de `xyz_min_dias`
+  días con venta en la ventana `xyz_ventana_dias`.
+- `xyz_media` y `xyz_sigma` usan el consumo de recetas de ventas (sin
+  merma) sobre la ventana calendario XYZ, contando los días sin venta como
+  cero. `xyz_cv = xyz_sigma / xyz_media`; la merma se suma aparte en
+  `consumo_diario`.
+- `stock_seguridad = z(clase) * xyz_sigma * sqrt(max(lead_time, 1))` cuando
+  hay clase XYZ; si no, `consumo_diario * dias_seguridad`. Los factores z
+  son `z_xyz_x`, `z_xyz_y` y `z_xyz_z`.
+- `punto_reorden = max(stock_minimo, consumo_diario * lead_time +
+  stock_seguridad)`.
 - `ordenes_compra.estado` usa `borrador`, `enviada`, `recibida` o `cancelada`;
   solo se reciben las dos primeras. `sp_recibir_orden_compra` recibe todo
   cuando `cantidad_recibida` es NULL y registra el kardex.
 - `v_orden_compra_sugerida` descuenta lo pendiente de órdenes abiertas
   (`borrador`/`enviada`), así generar dos veces no duplica pedidos. El
   objetivo es `max(stock_minimo * objetivo_reorden, consumo_diario *
-  (lead_time + dias_seguridad + dias_cobertura))`.
+  (lead_time + dias_cobertura) + stock_seguridad)`.
 - Umbrales en `parametros_sistema` (`umbral_advertencia`, `objetivo_reorden`,
   `alerta_caducidad_dias`, `dias_alerta_agotar`, `abc_corte_a/b`,
   `ventana_consumo_dias`, `lead_time_default`, `dias_seguridad`,
-  `dias_cobertura`, `factor_calor_35/30`); la app los lee al abrir
-  inventario y usa defaults equivalentes si no hay base.
+  `dias_cobertura`, `xyz_ventana_dias`, `xyz_min_dias`, `xyz_corte_x`,
+  `xyz_corte_y`, `z_xyz_x/y/z`, `factor_calor_35/30`); la app los lee al
+  abrir inventario y usa defaults equivalentes si no hay base.
 - Clima de `clima_torreon` son promedios de referencia, no medición en vivo.

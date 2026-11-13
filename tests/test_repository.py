@@ -28,6 +28,9 @@ class TestMapeo(unittest.TestCase):
         self.assertIsNone(r["puntoReorden"])
         self.assertIsNone(r["sugerido"])
         self.assertEqual(r["stockSeguridad"], 0.0)
+        self.assertIsNone(r["xyzClase"])
+        self.assertIsNone(r["xyzCv"])
+        self.assertEqual(r["xyzDias"], 0)
         self.assertEqual(r["estado"], "sin_minimo")
 
     def test_inventario_con_sugerido(self):
@@ -36,11 +39,18 @@ class TestMapeo(unittest.TestCase):
             "stock_actual": 3, "stock_minimo": 5, "consumo_diario": 1.5,
             "dias_agotar": 2, "estado": "critico", "lead_time_dias": 2,
             "punto_reorden": 5, "stock_seguridad": 1.5,
-            "merma_ventana": 0.75, "sugerido": 9, "proveedor": "Proveedor"})
+            "merma_ventana": 0.75, "sugerido": 9, "proveedor": "Proveedor",
+            "xyz_clase": "Z", "xyz_cv": 1.4, "xyz_sigma": 2.5,
+            "xyz_media": 1.1, "xyz_dias_con_datos": 18})
         self.assertEqual(r["leadTimeDias"], 2.0)
         self.assertEqual(r["puntoReorden"], 5.0)
         self.assertEqual(r["stockSeguridad"], 1.5)
         self.assertEqual(r["mermaVentana"], 0.75)
+        self.assertEqual(r["xyzClase"], "Z")
+        self.assertEqual(r["xyzCv"], 1.4)
+        self.assertEqual(r["xyzSigma"], 2.5)
+        self.assertEqual(r["xyzMedia"], 1.1)
+        self.assertEqual(r["xyzDias"], 18)
         self.assertEqual(r["sugerido"], 9)
         self.assertEqual(r["proveedor"], "Proveedor")
 

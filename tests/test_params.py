@@ -14,12 +14,16 @@ class TestDefaults(unittest.TestCase):
         for clave in ("umbral_advertencia", "objetivo_reorden", "alerta_caducidad_dias",
                       "dias_alerta_agotar", "abc_corte_a", "abc_corte_b",
                       "ventana_consumo_dias", "lead_time_default",
-                      "dias_seguridad", "dias_cobertura"):
+                      "dias_seguridad", "dias_cobertura",
+                      "xyz_ventana_dias", "xyz_min_dias", "xyz_corte_x",
+                      "xyz_corte_y", "z_xyz_x", "z_xyz_y", "z_xyz_z"):
             self.assertIn(clave, d)
         self.assertEqual(d["umbral_advertencia"], 1.25)
         self.assertEqual(d["objetivo_reorden"], 2.0)
         self.assertEqual(d["lead_time_default"], 2.0)
         self.assertEqual(d["dias_seguridad"], 1.0)
+        self.assertEqual(d["xyz_ventana_dias"], 90.0)
+        self.assertEqual(d["z_xyz_z"], 2.33)
 
     def test_parse_sobrescribe_y_ignora_basura(self):
         out = params.parse([
