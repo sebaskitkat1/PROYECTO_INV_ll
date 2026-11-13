@@ -1,4 +1,6 @@
 # Registra la tarea para ejecutar al iniciar sesion (al encender el equipo).
+# SOLO PARA ENTORNOS DEMO: el cajero exige COSECHA_ENTORNO=demo y nunca debe
+# apuntar a una base con ventas reales.
 # El Startup de Windows tambien puede lanzar el .bat; el candado de
 # al_encender.ps1 evita que ambos corran el cajero a la vez.
 $taskName = "CosechaCajeroAlEncender"
@@ -6,7 +8,7 @@ $scriptPath = Join-Path $PSScriptRoot "al_encender.ps1"
 $usuario = "$env:USERDOMAIN\$env:USERNAME"
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
+    -Argument "-NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -File `"$scriptPath`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $usuario
 $trigger.Delay = "PT15S"
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `

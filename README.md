@@ -109,6 +109,14 @@ migración `migrate_fase0.sql` agrega la columna, los índices y la vista
 
 ### Cajero al encender el equipo
 
+El cajero automático es **solo para entornos demo**. Antes de escribir en la
+base exige `COSECHA_ENTORNO=demo` en el entorno o en `.env`; sin esa variable
+aborta con código distinto de 0. Los correos se configuran con
+`CAJERO_CORREO` y `CAJERO_ADMIN_CORREO` (por defecto `caja@frutidata.local` y
+`admin@frutidata.local`). Solo recibe las órdenes de compra que genera en la
+misma corrida, nunca compras preexistentes. `--dry-run` funciona sin la
+variable y no escribe nada.
+
 El cajero diario se lanza solo al iniciar sesión, de dos formas que se
 complementan:
 
@@ -211,6 +219,7 @@ tests/
   test_forecast.py        Pronóstico, backtest y reparto (F02/F06)
   test_forecast_persist.py Guardado transaccional en pronosticos*
   test_repository.py      Mapeo, fallback y auth (rechazo + bitácora)
+  test_cajero_diario.py   Guard demo y reabasto solo con órdenes propias
   test_roles.py           Permisos, nav filtrada, compras y bitácora
   test_orders.py          Órdenes de compra: mapeo, detalle y ejemplo
   test_pos.py             Catálogo, carrito, validaciones y navegación de caja

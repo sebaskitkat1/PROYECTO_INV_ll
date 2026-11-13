@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Cajero automatico diario para Cosecha (fruteria).
 
+SOLO PARA ENTORNOS DEMO. Antes de escribir en la base exige
+`COSECHA_ENTORNO=demo` (variable de entorno o `.env`). Con `--dry-run`
+no escribe y no necesita la variable.
+
 Simula la operacion diaria de la caja para alimentar el modelo de DA:
-  1. Reabastece inventario recibiendo ordenes pendientes del dia anterior.
+  1. Reabastece con ordenes generadas por esta misma corrida. Nunca recibe
+     ordenes preexistentes, para no tocar compras reales.
   2. Simula ventas (tickets) con productos aleatorios de la caja.
-  3. Genera ordenes de compra para reponer stock bajo (sp_generar_ordenes_compra).
-  4. Recibe las ordenes generadas y repone el inventario (sp_recibir_orden_compra).
+  3. Vuelve a generar y recibir ordenes propias para el dia siguiente.
+  4. Purga lotes caducados.
 
 Uso:
   python scripts/cajero_diario.py                  # un dia, ~30 tickets
@@ -20,6 +25,8 @@ no duplican tickets. Las ventas quedan marcadas con origen='simulado'.
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 import random
 import sys
 from datetime import datetime
@@ -31,10 +38,11 @@ if str(ROOT) not in sys.path:
 
 from app.data import db, repository
 
-# Usuario cajero por defecto (Cajero Demo, id_rol=3).
-DEFAULT_USER_ID = 2
-# Las ordenes de compra y la purga son gestion: usuario Administrador.
-ADMIN_USER_ID = 1
+logger = logging.getLogger("cosecha.cajero")
+
+# Correos demo; se pueden cambiar con CAJERO_CORREO / CAJERO_ADMIN_CORREO.
+CORREO_CAJERO_DEFAULT = "caja@frutidata.local"
+CORREO_ADMIN_DEFAULT = "admin@frutidata.local"
 # Productos por ticket (min, max).
 ITEMS_POR_TICKET = (1, 4)
 # Cantidades tipicas por unidad.
@@ -42,37 +50,87 @@ CANTIDADES_KG_L = (0.25, 0.5, 0.5, 1.0, 1.0, 1.5, 2.0)
 CANTIDADES_PZAS = (1, 1, 2, 2, 3)
 
 
-def _recibir_pendientes() -> int:
-    recibidas = 0
+def _config(nombre: str, default: str) -> str:
+    return (os.getenv(nombre) or db.load_env().get(nombre) or default).strip()
+
+
+def _entorno_demo() -> bool:
+    valor = os.getenv("COSECHA_ENTORNO") or db.load_env().get("COSECHA_ENTORNO")
+    return str(valor or "").strip().lower() == "demo"
+
+
+def _configurar_logging() -> None:
+    """El detalle queda en scripts/cajero_diario.log; consola si es manual."""
+    log_path = Path(__file__).resolve().parent / "cajero_diario.log"
+    handlers: list[logging.Handler] = [
+        logging.FileHandler(log_path, encoding="utf-8"),
+    ]
+    if sys.stdout.isatty():
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=handlers,
+        force=True,
+    )
+
+
+def _usuario_id(correo: str, etiqueta: str) -> int:
+    uid = repository.user_id_by_email(correo)
+    if not uid:
+        raise RuntimeError(
+            f"No existe un usuario activo con correo {correo} ({etiqueta}).")
+    return int(uid)
+
+
+def _recibir_pendientes(ids: list[int], admin_id: int) -> int:
+    """Recibe solo las ordenes generadas por esta corrida."""
+    if not ids:
+        return 0
     try:
         ordenes = repository.purchase_orders(200)
     except Exception as exc:  # noqa: BLE001
-        print(f"  [aviso] no se pudieron listar ordenes: {exc}")
+        logger.warning("No se pudieron listar ordenes: %s", exc)
         return 0
-    for o in ordenes:
-        if o.get("estado") in ("borrador", "enviada"):
-            try:
-                repository.receive_purchase_order(int(o["id_orden"]), ADMIN_USER_ID)
-                recibidas += 1
-            except Exception as exc:  # noqa: BLE001
-                print(f"  [aviso] orden #{o['id_orden']} no recibida: {exc}")
+    abiertas = {int(o["id_orden"]): o for o in ordenes
+                if o.get("estado") in ("borrador", "enviada")}
+    recibidas = 0
+    for id_orden in ids:
+        if id_orden not in abiertas:
+            continue
+        try:
+            repository.receive_purchase_order(int(id_orden), admin_id)
+            recibidas += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Orden #%s no recibida: %s", id_orden, exc)
     return recibidas
 
 
-def _simular_ventas(tickets: int, rng: random.Random, dry_run: bool) -> tuple[int, int]:
+def _reabastecer(admin_id: int) -> tuple[int, int]:
+    """Genera ordenes propias y las recibe; devuelve (generadas, recibidas)."""
+    try:
+        ids = repository.generate_purchase_order_ids(admin_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Generar ordenes: %s", exc)
+        return 0, 0
+    return len(ids), _recibir_pendientes(ids, admin_id)
+
+
+def _simular_ventas(tickets: int, rng: random.Random, dry_run: bool,
+                    cajero_id: int) -> tuple[int, int]:
     ok = 0
     fail = 0
     if dry_run:
-        return tickets, 0
+        return 0, 0
     try:
         productos = repository.pos_products()
         metodos = [m["id"] for m in repository.pos_payment_methods()]
     except Exception as exc:  # noqa: BLE001
-        print(f"  [error] no se pudo cargar catalogo: {exc}")
+        logger.error("No se pudo cargar catalogo: %s", exc)
         return 0, tickets
 
     if not productos or not metodos:
-        print("  [error] catalogo o metodos de pago vacios.")
+        logger.error("Catalogo o metodos de pago vacios.")
         return 0, tickets
 
     for i in range(tickets):
@@ -88,31 +146,14 @@ def _simular_ventas(tickets: int, rng: random.Random, dry_run: bool) -> tuple[in
 
         metodo = rng.choice(metodos)
         try:
-            repository.register_sale(items, int(metodo), DEFAULT_USER_ID,
+            repository.register_sale(items, int(metodo), cajero_id,
                                      origen="simulado")
             ok += 1
-        except Exception:  # noqa: BLE001
-            # Reintentar una vez tras reponer inventario.
-            _recibir_pendientes()
-            try:
-                repository.register_sale(items, int(metodo), DEFAULT_USER_ID,
-                                         origen="simulado")
-                ok += 1
-            except Exception as exc2:  # noqa: BLE001
-                fail += 1
-                if fail <= 5:
-                    print(f"  [venta {i + 1}] fallida: {exc2}")
+        except Exception as exc:  # noqa: BLE001
+            fail += 1
+            if fail <= 5:
+                logger.warning("Venta %s fallida: %s", i + 1, exc)
     return ok, fail
-
-
-def _generar_ordenes(dry_run: bool) -> int:
-    if dry_run:
-        return 0
-    try:
-        return int(repository.generate_purchase_orders(ADMIN_USER_ID))
-    except Exception as exc:  # noqa: BLE001
-        print(f"  [aviso] generar ordenes: {exc}")
-        return 0
 
 
 def _ya_corrio_hoy() -> bool:
@@ -123,60 +164,81 @@ def _ya_corrio_hoy() -> bool:
             "WHERE DATE(fecha_hora) = CURDATE() AND origen = 'simulado'")
         return bool(filas and int(filas[0]["n"] or 0) > 0)
     except Exception as exc:  # noqa: BLE001
-        print(f"  [aviso] no se pudo verificar la corrida diaria: {exc}")
+        logger.warning("No se pudo verificar la corrida diaria: %s", exc)
         return False
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Cajero automatico diario - Cosecha")
-    parser.add_argument("--tickets", type=int, default=30, help="numero de tickets a simular (default 30)")
-    parser.add_argument("--seed", type=int, default=None, help="semilla para reproducibilidad")
-    parser.add_argument("--dry-run", action="store_true", help="no escribe en la base")
-    parser.add_argument("--force", action="store_true", help="repite la corrida aunque ya haya ventas hoy")
+    parser.add_argument("--tickets", type=int, default=30,
+                        help="numero de tickets a simular (default 30)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="semilla para reproducibilidad")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="no escribe en la base")
+    parser.add_argument("--force", action="store_true",
+                        help="repite la corrida aunque ya haya ventas hoy")
     args = parser.parse_args()
 
+    _configurar_logging()
     rng = random.Random(args.seed if args.seed is not None else random.randrange(10**9))
 
     inicio = datetime.now()
-    print("=" * 60)
-    print(f"Cajero diario Cosecha - {inicio.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"tickets={args.tickets} seed={args.seed} dry_run={args.dry_run}")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Cajero diario Cosecha - %s", inicio.strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("tickets=%s seed=%s dry_run=%s", args.tickets, args.seed, args.dry_run)
+    logger.info("=" * 60)
 
+    cajero_id = 0
+    admin_id = 0
     if not args.dry_run:
+        if not _entorno_demo():
+            logger.error(
+                "Entorno no habilitado. Define COSECHA_ENTORNO=demo en el "
+                "entorno o en .env para permitir escrituras de demostracion.")
+            return 2
         if not db.available():
-            print("[error] sin conexion a la base de datos.")
+            logger.error("Sin conexion a la base de datos.")
             return 1
+        try:
+            cajero_id = _usuario_id(
+                _config("CAJERO_CORREO", CORREO_CAJERO_DEFAULT), "cajero")
+            admin_id = _usuario_id(
+                _config("CAJERO_ADMIN_CORREO", CORREO_ADMIN_DEFAULT),
+                "administrador")
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 3
         if not args.force and _ya_corrio_hoy():
-            print("Ya hay ventas simuladas hoy. Usa --force para repetir.")
+            logger.info("Ya hay ventas simuladas hoy. Usa --force para repetir.")
             return 0
 
-    print("[1/4] Reponiendo inventario (ordenes pendientes)...")
-    r0 = _recibir_pendientes() if not args.dry_run else 0
-    print(f"      recibidas: {r0}")
+    logger.info("[1/4] Reabasteciendo antes de vender (ordenes propias)...")
+    gen0, rec0 = _reabastecer(admin_id) if not args.dry_run else (0, 0)
+    logger.info("      generadas: %s  recibidas: %s", gen0, rec0)
 
-    print("[2/4] Simulando ventas...")
-    ok, fail = _simular_ventas(args.tickets, rng, args.dry_run)
-    print(f"      ok={ok}  fallidas={fail}")
+    logger.info("[2/4] Simulando ventas...")
+    if args.dry_run:
+        logger.info("      omitido (dry-run)")
+    else:
+        ok, fail = _simular_ventas(args.tickets, rng, args.dry_run, cajero_id)
+        logger.info("      ok=%s  fallidas=%s", ok, fail)
 
-    print("[3/4] Generando ordenes de compra...")
-    gen = _generar_ordenes(args.dry_run)
-    print(f"      ordenes generadas: {gen}")
+    logger.info("[3/4] Reabasteciendo despues de vender (ordenes propias)...")
+    gen1, rec1 = _reabastecer(admin_id) if not args.dry_run else (0, 0)
+    logger.info("      generadas: %s  recibidas: %s", gen1, rec1)
 
-    print("[4/4] Reabasteciendo (recibiendo ordenes nuevas)...")
-    r1 = _recibir_pendientes() if not args.dry_run else 0
-    print(f"      recibidas: {r1}")
-
-    # Purga de lotes caducados, si aplica.
+    logger.info("[4/4] Purgando lotes caducados...")
     if not args.dry_run:
         try:
-            purgados = repository.purge_expired(ADMIN_USER_ID)
-            print(f"      lotes purgados: {purgados}")
+            purgados = repository.purge_expired(admin_id)
+            logger.info("      lotes purgados: %s", purgados)
         except Exception as exc:  # noqa: BLE001
-            print(f"  [aviso] purga: {exc}")
+            logger.warning("Purga: %s", exc)
 
-    print("-" * 60)
-    print(f"Listo. Duracion: {(datetime.now() - inicio).total_seconds():.1f}s")
+    logger.info("-" * 60)
+    logger.info("Listo. Duracion: %.1fs",
+                (datetime.now() - inicio).total_seconds())
     return 0
 
 

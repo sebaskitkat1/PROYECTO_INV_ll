@@ -493,6 +493,15 @@ def update_minimo(id_ingrediente: int, nuevo: float,
                (float(nuevo), sucursal_id(), int(id_ingrediente)))
 
 
+def user_id_by_email(correo: str) -> int | None:
+    """Id de un usuario activo por correo; None si no existe."""
+    _hay_base()
+    filas = db.fetchall(
+        "SELECT id_usuario FROM usuarios WHERE correo = %s AND activo = 1",
+        ((correo or "").strip(),))
+    return int(filas[0]["id_usuario"]) if filas else None
+
+
 def _equipo() -> str | None:
     try:
         return socket.gethostname()
@@ -636,11 +645,16 @@ def purchase_order_detail(id_orden: int) -> list[dict]:
     return [map_orden_detalle_row(r) for r in filas]
 
 
-def generate_purchase_orders(id_usuario: int | None) -> int:
+def generate_purchase_order_ids(id_usuario: int | None) -> list[int]:
+    """Genera las ordenes sugeridas y devuelve solo sus ids."""
     _hay_base()
     _require_role(id_usuario, ROLES_GESTION)
     salidas = db.callproc("sp_generar_ordenes_compra", (sucursal_id(), id_usuario))
-    return len(salidas)
+    return [int(f["id_orden"]) for f in salidas if f.get("id_orden") is not None]
+
+
+def generate_purchase_orders(id_usuario: int | None) -> int:
+    return len(generate_purchase_order_ids(id_usuario))
 
 
 def receive_purchase_order(id_orden: int, id_usuario: int | None) -> None:

@@ -2,6 +2,7 @@
 import os
 import unittest
 import uuid
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["CAFE_DATOS"] = "mock"  # por defecto; el test de auth lo quita
@@ -66,6 +67,20 @@ class TestMapeo(unittest.TestCase):
         self.assertEqual(r["usuario"], "—")
         self.assertEqual(r["resultado"], "Correcto")
         self.assertEqual(r["equipo"], "—")
+
+
+class TestUsuariosDemo(unittest.TestCase):
+    def test_user_id_by_email_activo(self):
+        with patch.object(repository, "_hay_base"), \
+                patch.object(repository.db, "fetchall",
+                             return_value=[{"id_usuario": 7}]) as consulta:
+            self.assertEqual(repository.user_id_by_email(" caja@x "), 7)
+        self.assertEqual(consulta.call_args.args[1], ("caja@x",))
+
+    def test_user_id_by_email_inexistente(self):
+        with patch.object(repository, "_hay_base"), \
+                patch.object(repository.db, "fetchall", return_value=[]):
+            self.assertIsNone(repository.user_id_by_email("nadie@x"))
 
 
 class TestFallback(unittest.TestCase):

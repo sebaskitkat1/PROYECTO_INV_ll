@@ -35,6 +35,18 @@ class TestMapeoCompras(unittest.TestCase):
         self.assertAlmostEqual(r["precio"], 23.45)
 
 
+class TestOrdenesGeneradas(unittest.TestCase):
+    def test_ids_generados_y_conteo(self):
+        salidas = [{"id_orden": 5}, {"id_orden": 6}]
+        with patch.object(repository, "_hay_base"), \
+                patch.object(repository, "_require_role"), \
+                patch.object(repository.db, "callproc",
+                             return_value=salidas) as procedimiento:
+            self.assertEqual(repository.generate_purchase_order_ids(1), [5, 6])
+            self.assertEqual(repository.generate_purchase_orders(1), 2)
+        self.assertEqual(procedimiento.call_count, 2)
+
+
 class TestPantallaCompras(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
