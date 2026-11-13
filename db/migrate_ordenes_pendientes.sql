@@ -4,6 +4,13 @@
 -- y stock de seguridad. Aplica también esa migración.
 USE frutidata;
 
+-- Registro idempotente de la migracion (version = nombre sin .sql).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(64) NOT NULL PRIMARY KEY,
+    aplicada_en DATETIME    NOT NULL
+) ENGINE=InnoDB;
+
+
 CREATE OR REPLACE VIEW v_orden_compra_sugerida AS
 SELECT e.id_sucursal, e.id_ingrediente, e.nombre, e.unidad,
        e.stock_actual, e.stock_minimo, e.estado,
@@ -26,3 +33,7 @@ LEFT JOIN (
 LEFT JOIN ingrediente_proveedor ip ON ip.id_ingrediente = e.id_ingrediente AND ip.es_principal = 1
 LEFT JOIN proveedores p            ON p.id_proveedor = ip.id_proveedor
 WHERE e.estado IN ('critico', 'advertencia');
+
+-- Registrar la migracion aplicada.
+INSERT IGNORE INTO schema_migrations (version, aplicada_en)
+VALUES ('migrate_ordenes_pendientes', NOW());

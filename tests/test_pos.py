@@ -18,7 +18,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 class TestSeedCatalogo(unittest.TestCase):
     def test_schema_tiene_al_menos_50_productos(self):
-        texto = (RAIZ / "db" / "frutidata_schema.sql").read_text(encoding="utf-8")
+        texto = (RAIZ / "db" / "init_schema.sql").read_text(encoding="utf-8")
         inicio = texto.index("INSERT INTO productos (id_categoria")
         fin = texto.index("INSERT INTO categorias_ingrediente", inicio)
         nombres = re.findall(r"SELECT '([^']+)' AS nombre", texto[inicio:fin])
@@ -26,12 +26,12 @@ class TestSeedCatalogo(unittest.TestCase):
         self.assertEqual(len(nombres), len(set(nombres)))
 
     def test_schema_incluye_categorias_no_solo_frutas(self):
-        texto = (RAIZ / "db" / "frutidata_schema.sql").read_text(encoding="utf-8")
+        texto = (RAIZ / "db" / "init_schema.sql").read_text(encoding="utf-8")
         for categoria in ("Frutas", "Verduras", "Jugos", "Bebidas", "Snacks", "Abarrotes"):
             self.assertIn(f"('{categoria}')", texto)
 
     def test_cantidad_de_venta_es_decimal(self):
-        texto = (RAIZ / "db" / "frutidata_schema.sql").read_text(encoding="utf-8")
+        texto = (RAIZ / "db" / "init_schema.sql").read_text(encoding="utf-8")
         self.assertRegex(texto, r"cantidad\s+DECIMAL\(10,3\)")
         migracion = (RAIZ / "db" / "migrate_cantidades_decimales.sql").read_text(
             encoding="utf-8")
@@ -46,7 +46,7 @@ class TestSeedCatalogo(unittest.TestCase):
         self.assertIn("INSERT INTO ingrediente_proveedor", migracion)
 
     def test_kpi_es_precio_promedio_por_unidad(self):
-        texto = (RAIZ / "db" / "frutidata_schema.sql").read_text(encoding="utf-8")
+        texto = (RAIZ / "db" / "init_schema.sql").read_text(encoding="utf-8")
         self.assertIn("h.ventas / NULLIF(h.unidades, 0)", texto)
         migracion = (RAIZ / "db" / "migrate_kpi_precio_unidad.sql").read_text(
             encoding="utf-8")

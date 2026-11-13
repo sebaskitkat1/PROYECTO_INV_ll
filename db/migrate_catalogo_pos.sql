@@ -3,6 +3,13 @@
 -- Uso: mysql -u root -p < db/migrate_catalogo_pos.sql
 USE frutidata;
 
+-- Registro idempotente de la migracion (version = nombre sin .sql).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(64) NOT NULL PRIMARY KEY,
+    aplicada_en DATETIME    NOT NULL
+) ENGINE=InnoDB;
+
+
 INSERT INTO categorias_producto (nombre) VALUES
     ('Frutas'), ('Verduras'), ('Jugos'), ('Bebidas'), ('Snacks'), ('Abarrotes')
 ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
@@ -99,3 +106,7 @@ JOIN categorias_producto c ON c.id_categoria = p.id_categoria
 WHERE p.activo = 1
 GROUP BY c.nombre
 ORDER BY c.nombre;
+
+-- Registrar la migracion aplicada.
+INSERT IGNORE INTO schema_migrations (version, aplicada_en)
+VALUES ('migrate_catalogo_pos', NOW());

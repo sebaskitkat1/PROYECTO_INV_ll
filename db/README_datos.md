@@ -1,11 +1,16 @@
 # Base de datos `frutidata`
 
-Schema versionado en `db/frutidata_schema.sql` (MySQL 8.0.19+).
+Schema versionado en `db/init_schema.sql` (MySQL 8.0.19+).
 
 ```powershell
-mysql -u root -p < db/frutidata_schema.sql
+mysql -u root -p < db/init_schema.sql
 CALL sp_generar_ventas_demo(60);   # datos de prueba, no toca inventario
 ```
+
+`init_schema.sql` usa `CREATE DATABASE IF NOT EXISTS` y no borra datos. Para
+reiniciar una base de desarrollo existe `db/dev_reset.sql`, que sí borra la
+base completa; no se distribuye en el instalador. `frutidata_schema.sql` se
+conserva como wrapper de compatibilidad hacia `init_schema.sql`.
 
 Para una base ya creada, aplica las migraciones sin borrar datos:
 
@@ -20,6 +25,21 @@ mysql -u root -p < db/migrate_fase0.sql
 mysql -u root -p < db/migrate_fase2.sql
 mysql -u root -p < db/migrate_fase5.sql
 ```
+
+Cada migración crea `schema_migrations` si falta y registra su versión
+(nombre del archivo sin `.sql`) con `INSERT IGNORE` al final. Así se puede
+saber qué se aplicó sin depender de la memoria.
+
+Después del schema y las migraciones, crea el usuario de la aplicación:
+
+```powershell
+mysql -u root -p < db/crear_usuario_app.sql
+```
+
+Cambia `CAMBIAR_CONTRASENA_SEGURA` por una contraseña propia y usa el mismo
+valor en `DB_PASSWORD`. La app debe conectarse como `cosecha_app` con
+`SELECT, INSERT, UPDATE, EXECUTE`; no tiene `DELETE` ni `DROP` y nunca debe
+usar `root`.
 
 `migrate_catalogo_pos.sql` deja 66 productos activos en 6 categorías.
 `migrate_fix_totales_ventas.sql` corrige el trigger de totales y repara las

@@ -4,6 +4,13 @@
 -- Uso: mysql -u root -p < db/migrate_inventario_recetas.sql
 USE frutidata;
 
+-- Registro idempotente de la migracion (version = nombre sin .sql).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(64) NOT NULL PRIMARY KEY,
+    aplicada_en DATETIME    NOT NULL
+) ENGINE=InnoDB;
+
+
 -- 1. Categorias de ingrediente que faltan para bebidas, snacks y abarrotes.
 INSERT INTO categorias_ingrediente (nombre) VALUES
     ('Bebidas'), ('Snacks'), ('Abarrotes')
@@ -84,3 +91,7 @@ WHERE i.activo = 1
       SELECT 1 FROM ingrediente_proveedor ip
       WHERE ip.id_ingrediente = i.id_ingrediente AND ip.es_principal = 1
   );
+
+-- Registrar la migracion aplicada.
+INSERT IGNORE INTO schema_migrations (version, aplicada_en)
+VALUES ('migrate_inventario_recetas', NOW());

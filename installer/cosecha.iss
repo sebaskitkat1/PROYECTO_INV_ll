@@ -32,7 +32,7 @@ Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; Group
 [Files]
 Source: "..\dist\cosecha\*"; DestDir: "{app}"; Excludes: ".env,.env.*,*.pyc,__pycache__,*.log"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\.env.example"; DestDir: "{app}"; DestName: ".env.example"; Flags: ignoreversion
-Source: "..\db\frutidata_schema.sql"; DestDir: "{app}\db"; Flags: ignoreversion
+Source: "..\db\init_schema.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_ordenes_pendientes.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_catalogo_pos.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_fix_totales_ventas.sql"; DestDir: "{app}\db"; Flags: ignoreversion
@@ -42,6 +42,7 @@ Source: "..\db\migrate_kpi_precio_unidad.sql"; DestDir: "{app}\db"; Flags: ignor
 Source: "..\db\migrate_fase0.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_fase2.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_fase5.sql"; DestDir: "{app}\db"; Flags: ignoreversion
+Source: "..\db\crear_usuario_app.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\README_datos.md"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LEEME_INSTALACION.txt"; DestDir: "{app}"; Flags: ignoreversion

@@ -3,6 +3,13 @@
 -- Uso: mysql -u root -p < db/migrate_fase5.sql
 USE frutidata;
 
+-- Registro idempotente de la migracion (version = nombre sin .sql).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(64) NOT NULL PRIMARY KEY,
+    aplicada_en DATETIME    NOT NULL
+) ENGINE=InnoDB;
+
+
 -- ---------------------------------------------------------------------
 -- 1. parametros nuevos (no pisa valores ya configurados)
 --    La clasificacion XYZ usa la demanda diaria de ventas en una ventana
@@ -241,3 +248,7 @@ WHERE xyz_clase IS NOT NULL AND stock_seguridad > 0;
 
 SELECT 'sugeridos_fase5' AS revision, COUNT(*) AS ingredientes
 FROM v_orden_compra_sugerida WHERE sugerido > 0;
+
+-- Registrar la migracion aplicada.
+INSERT IGNORE INTO schema_migrations (version, aplicada_en)
+VALUES ('migrate_fase5', NOW());

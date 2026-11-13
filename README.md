@@ -67,7 +67,7 @@ ejemplo y dejan el detalle en el log.
 
 ```powershell
 # 1. Cargar el schema (la base con datos se llama frutidata)
-mysql -u root -p < db/frutidata_schema.sql
+mysql -u root -p < db/init_schema.sql
 #    Si la base ya existe, aplicar las migraciones sin borrar datos:
 mysql -u root -p < db/migrate_ordenes_pendientes.sql
 mysql -u root -p < db/migrate_catalogo_pos.sql
@@ -78,12 +78,21 @@ mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 mysql -u root -p < db/migrate_fase0.sql
 mysql -u root -p < db/migrate_fase2.sql
 mysql -u root -p < db/migrate_fase5.sql
-# 2. Copiar .env.example como .env y poner tus valores (nunca se sube)
+#    Crear el usuario de la app (cambia la contrasena antes):
+mysql -u root -p < db/crear_usuario_app.sql
+# 2. Copiar .env.example como .env y poner tus valores (nunca se sube).
+#    Usa DB_USER=cosecha_app, nunca root.
 # 3. Datos de prueba:  CALL sp_generar_ventas_demo(60);
 # 4. Dar de alta tu contraseña:
 python -c "import bcrypt; print(bcrypt.hashpw(b'TU_CLAVE', bcrypt.gensalt()).decode())"
 #    UPDATE frutidata.usuarios SET password_hash='<hash>' WHERE correo='caja@frutidata.local';
 ```
+
+`schema_migrations` guarda la versión de cada migración aplicada (nombre del
+archivo sin `.sql`). `db/init_schema.sql` solo crea la base si no existe y no
+borra datos. `db/dev_reset.sql` borra la base completa y es exclusivo de
+desarrollo: no se distribuye en el instalador. La app debe conectarse como
+`cosecha_app` (SELECT, INSERT, UPDATE y EXECUTE), no como root.
 
 Los umbrales de inventario (advertencia, reorden, caducidad, días de
 alerta, cortes ABC, ventana de consumo, lead time por defecto, días de
@@ -189,7 +198,10 @@ app/
     prediction_screen.py  Histórico vs pronóstico 30 días y guardado
     bitacora_screen.py    Accesos consultables (solo Administrador)
 db/
-  frutidata_schema.sql    Schema MySQL validado (tablas, vistas, triggers, SP)
+  init_schema.sql         Schema MySQL validado (tablas, vistas, triggers, SP)
+  crear_usuario_app.sql   Usuario cosecha_app con permisos mínimos
+  dev_reset.sql           Borra la base completa (solo desarrollo, no se instala)
+  frutidata_schema.sql    Wrapper de compatibilidad hacia init_schema.sql
   migrate_ordenes_pendientes.sql  Vista de compras sin pedidos duplicados
   migrate_catalogo_pos.sql        Catálogo de 66 productos para la caja
   migrate_fix_totales_ventas.sql  Trigger y totales históricos corregidos

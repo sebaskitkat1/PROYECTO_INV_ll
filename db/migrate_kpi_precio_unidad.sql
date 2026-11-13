@@ -3,6 +3,13 @@
 -- Uso: mysql -u root -p < db/migrate_kpi_precio_unidad.sql
 USE frutidata;
 
+-- Registro idempotente de la migracion (version = nombre sin .sql).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(64) NOT NULL PRIMARY KEY,
+    aplicada_en DATETIME    NOT NULL
+) ENGINE=InnoDB;
+
+
 CREATE OR REPLACE VIEW v_kpi_dashboard AS
 SELECT s.id_sucursal,
        COALESCE(h.ventas, 0)   AS ventas_hoy,
@@ -21,3 +28,7 @@ SELECT ticket_promedio, unidades_hoy, ventas_hoy
 FROM v_kpi_dashboard
 ORDER BY id_sucursal
 LIMIT 1;
+
+-- Registrar la migracion aplicada.
+INSERT IGNORE INTO schema_migrations (version, aplicada_en)
+VALUES ('migrate_kpi_precio_unidad', NOW());

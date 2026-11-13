@@ -2,12 +2,14 @@ COSECHA - INSTALACION
 
 1. Abre "Configurar base de datos" en el menu Inicio y edita .env:
    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD y DB_NAME.
+   Usa DB_USER=cosecha_app (nunca root) y la misma contrasena que pusiste
+   en db\crear_usuario_app.sql.
    Si no configuras MySQL, la app abre en modo ejemplo y no guarda cambios.
 
-2. Primera instalacion de la base:
-   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\frutidata_schema.sql"
+2. Primera instalacion de la base, como root:
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\init_schema.sql"
 
-   Si la base ya existe, aplica las migraciones sin borrar datos:
+   Luego aplica las migraciones en este orden, tambien como root:
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_ordenes_pendientes.sql"
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_catalogo_pos.sql"
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fix_totales_ventas.sql"
@@ -18,18 +20,29 @@ COSECHA - INSTALACION
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fase2.sql"
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fase5.sql"
 
-3. Los usuarios de la base deben tener contrasena bcrypt. La app rechaza
+   Cada migracion se registra en la tabla schema_migrations.
+
+3. Crea el usuario de la aplicacion con permisos minimos, como root:
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\crear_usuario_app.sql"
+   Antes de ejecutarlo, cambia CAMBIAR_CONTRASENA_SEGURA por una contrasena
+   propia y usa el mismo valor en DB_PASSWORD.
+
+   Si la base ya existe, salta el paso 2 del schema y aplica solo las
+   migraciones pendientes; el paso 3 tambien es necesario.
+
+4. Los usuarios de la base deben tener contrasena bcrypt. La app rechaza
    contrasenas en claro o hashes de otro formato.
 
-4. Abre Cosecha desde el menu Inicio. El estado de la esquina indica si esta
+5. Abre Cosecha desde el menu Inicio. El estado de la esquina indica si esta
    usando la base o el ejemplo.
 
-5. Haz respaldo de MySQL antes de actualizar esquema o recibir ordenes de
+6. Haz respaldo de MySQL antes de actualizar esquema o recibir ordenes de
    compra. La recepcion de una orden descuenta inventario y registra kardex.
 
 Archivos utiles:
   .env                  Configuracion local (no compartir)
-  db\frutidata_schema.sql
+  db\init_schema.sql    Crea la base si no existe; no borra datos
+  db\crear_usuario_app.sql  Usuario cosecha_app con permisos minimos
   db\migrate_ordenes_pendientes.sql
   db\migrate_catalogo_pos.sql
   db\migrate_fix_totales_ventas.sql
@@ -40,3 +53,6 @@ Archivos utiles:
   db\migrate_fase2.sql
   db\migrate_fase5.sql
   README.md
+
+Nota: db\dev_reset.sql borra la base y NO se distribuye con el instalador.
+Solo se usa en desarrollo.

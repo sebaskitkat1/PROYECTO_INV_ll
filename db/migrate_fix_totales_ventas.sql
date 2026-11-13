@@ -4,6 +4,13 @@
 -- Uso: mysql -u root -p < db/migrate_fix_totales_ventas.sql
 USE frutidata;
 
+-- Registro idempotente de la migracion (version = nombre sin .sql).
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(64) NOT NULL PRIMARY KEY,
+    aplicada_en DATETIME    NOT NULL
+) ENGINE=InnoDB;
+
+
 DROP TRIGGER IF EXISTS trg_detalle_ventas_ai;
 
 DELIMITER $$
@@ -48,3 +55,7 @@ SET v.subtotal = COALESCE(d.subtotal_real, 0),
 SELECT COUNT(*) AS ventas_con_total_incorrecto
 FROM ventas
 WHERE total <> GREATEST(subtotal - descuento, 0);
+
+-- Registrar la migracion aplicada.
+INSERT IGNORE INTO schema_migrations (version, aplicada_en)
+VALUES ('migrate_fix_totales_ventas', NOW());
