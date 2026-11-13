@@ -39,6 +39,9 @@ Source: "..\db\migrate_fix_totales_ventas.sql"; DestDir: "{app}\db"; Flags: igno
 Source: "..\db\migrate_cantidades_decimales.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_inventario_recetas.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\migrate_kpi_precio_unidad.sql"; DestDir: "{app}\db"; Flags: ignoreversion
+Source: "..\db\migrate_fase0.sql"; DestDir: "{app}\db"; Flags: ignoreversion
+Source: "..\db\migrate_fase2.sql"; DestDir: "{app}\db"; Flags: ignoreversion
+Source: "..\db\migrate_fase5.sql"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\db\README_datos.md"; DestDir: "{app}\db"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LEEME_INSTALACION.txt"; DestDir: "{app}"; Flags: ignoreversion

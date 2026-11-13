@@ -14,6 +14,9 @@ COSECHA - INSTALACION
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_cantidades_decimales.sql"
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_inventario_recetas.sql"
    mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_kpi_precio_unidad.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fase0.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fase2.sql"
+   mysql -u root -p < "%LOCALAPPDATA%\Programs\Cosecha\db\migrate_fase5.sql"
 
 3. Los usuarios de la base deben tener contrasena bcrypt. La app rechaza
    contrasenas en claro o hashes de otro formato.
@@ -33,4 +36,7 @@ Archivos utiles:
   db\migrate_cantidades_decimales.sql
   db\migrate_inventario_recetas.sql
   db\migrate_kpi_precio_unidad.sql
+  db\migrate_fase0.sql
+  db\migrate_fase2.sql
+  db\migrate_fase5.sql
   README.md
