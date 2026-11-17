@@ -96,8 +96,9 @@ class PredictionScreen(QWidget):
         detalle = PredictionScreen._detalle(origen)
         futuro = analytics.forecast_daily(hist, 30)
         bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        banda = analytics.forecast_interval(hist, futuro)
         return {"hist": hist, "detalle": detalle, "futuro": futuro,
-                "bt": bt, "fuente": fuente_txt}
+                "bt": bt, "banda": banda, "fuente": fuente_txt}
 
     @staticmethod
     def _fallback_data() -> dict:
@@ -105,8 +106,9 @@ class PredictionScreen(QWidget):
         detalle = mock_data.get_sales_detail()
         futuro = analytics.forecast_daily(hist, 30)
         bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        banda = analytics.forecast_interval(hist, futuro)
         return {"hist": hist, "detalle": detalle, "futuro": futuro,
-                "bt": bt, "fuente": "ejemplo"}
+                "bt": bt, "banda": banda, "fuente": "ejemplo"}
 
     @staticmethod
     def _clear_layout(layout) -> None:
@@ -124,7 +126,8 @@ class PredictionScreen(QWidget):
         self._clear_layout(self.chart_layout)
         self._clear_layout(self.table_layout)
         self.chart_layout.addWidget(
-            self._line_chart_card(data["hist"], data["futuro"], data["fuente"]))
+            self._line_chart_card(data["hist"], data["futuro"], data["fuente"],
+                                  data.get("banda", [])))
         self.table_layout.addWidget(
             self._table_card(data["hist"], data["futuro"], data["bt"], data["detalle"]))
 
@@ -182,7 +185,8 @@ class PredictionScreen(QWidget):
             except DBError:
                 return mock_data.get_sales_detail()
 
-    def _line_chart_card(self, hist: list, futuro: list, fuente_txt: str) -> QFrame:
+    def _line_chart_card(self, hist: list, futuro: list, fuente_txt: str,
+                         banda: list | None = None) -> QFrame:
         card = QFrame()
         card.setProperty("role", "card")
         layout = QVBoxLayout(card)
@@ -251,6 +255,14 @@ class PredictionScreen(QWidget):
                     ha="center", fontsize=7, color=styles.CLAY,
                 )
         if futuro:
+            if banda:
+                canvas.axes.fill_between(
+                    [d for d, _, _ in banda],
+                    [bajo for _, bajo, _ in banda],
+                    [alto for _, _, alto in banda],
+                    color=styles.MENTA, alpha=0.14, linewidth=0,
+                    label="Banda 80%",
+                )
             # sin puente desde el ultimo dato: el pronostico parte de su
             # propio nivel y no dibuja un salto artificial
             canvas.axes.plot(
@@ -292,7 +304,8 @@ class PredictionScreen(QWidget):
         header.setStyleSheet(f"background-color: {styles.SURFACE_WARM}; border-bottom: 1px solid {styles.LINE};")
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(18, 14, 18, 14)
-        title = QLabel("Estimación preliminar" if not bt["gana"] else "Qué esperar el próximo mes")
+        title = QLabel("Qué esperar el próximo mes" if analytics.gana_mes(bt)
+                       else "Estimación preliminar")
         title.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {styles.INK};")
         header_layout.addWidget(title)
         layout.addWidget(header)
@@ -358,12 +371,22 @@ class PredictionScreen(QWidget):
         def pct(valor):
             return "—" if valor is None else f"{valor:.1f}%"
 
-        return (f"Backtest: WAPE modelo {pct(bt.get('wape_modelo'))} · "
-                f"ingenuo {pct(bt.get('wape_naive'))} · "
-                f"media móvil 7 {pct(bt.get('wape_ma7'))} · "
-                f"sesgo {pct(bt.get('sesgo_modelo'))} · "
-                f"horizonte medio {bt.get('horizonte_medio', 0):.1f} días "
-                f"(n={bt.get('n_origenes', 0)}).")
+        def linea(horizonte: int, etiqueta: str) -> str:
+            n = bt.get(f"n_h{horizonte}", 0)
+            if not n:
+                return f"{etiqueta}: sin datos suficientes."
+            return (f"{etiqueta}: WAPE modelo {pct(bt.get(f'wape_h{horizonte}'))} · "
+                    f"estacional ingenuo {pct(bt.get(f'wape_snaive_h{horizonte}'))} "
+                    f"(n={n}).")
+
+        horizonte = bt.get("horizonte_medio_h30") or bt.get("horizonte_medio", 0)
+        return (" ".join([
+            linea(30, "A 30 días"),
+            linea(7, "A 7 días"),
+            linea(1, "A 1 día (no valida el mes)"),
+            f"Sesgo a 30 días {pct(bt.get('sesgo_h30'))} · "
+            f"horizonte medio {horizonte:.1f} días.",
+        ]))
 
     def _build_actions_row(self) -> QHBoxLayout:
         row = QHBoxLayout()

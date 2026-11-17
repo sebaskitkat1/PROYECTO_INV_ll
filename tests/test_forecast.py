@@ -26,16 +26,20 @@ class TestPronosticoFechas(unittest.TestCase):
         fut = analytics.forecast_daily(hist, 3, start=tras_historial(hist))
         self.assertEqual([v for _, v in fut], [200.0, 210.0, 220.0])
 
-    def test_ndigits_segun_escala(self):
+    def test_ndigits_por_defecto_y_explicito(self):
         hist = serie_lineal(100, 10)
         inicio = tras_historial(hist)
         unid = [(d, 6.3) for d, _ in hist]
         self.assertEqual(
-            [v for _, v in analytics.forecast_daily(unid, 1, 0, start=inicio)],
+            [v for _, v in analytics.forecast_daily(unid, 1, start=inicio)],
             [6.0])
-        # en pesos se redondea a decenas como antes
+        # por defecto redondea a unidades; -1 sigue disponible para pesos
+        pesos = [(d, 200.6) for d, _ in hist]
         self.assertEqual(
-            [v for _, v in analytics.forecast_daily(hist, 1, start=inicio)],
+            [v for _, v in analytics.forecast_daily(pesos, 1, start=inicio)],
+            [201.0])
+        self.assertEqual(
+            [v for _, v in analytics.forecast_daily(pesos, 1, -1, start=inicio)],
             [200.0])
 
     def test_pasos_diarios_consecutivos(self):
@@ -85,23 +89,32 @@ class TestPronosticoFechas(unittest.TestCase):
         self.assertAlmostEqual(sum(fac.values()) / len(fac), 1.0, places=6)
 
     def test_backtest_gana_en_tendencia_clara(self):
-        hist = serie_lineal(100, 14)
+        hist = serie_lineal(100, 60)
         bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
         self.assertTrue(bt["gana"])
         self.assertLess(bt["mae_modelo"], bt["mae_naive"])
-        self.assertGreaterEqual(bt["mape_modelo"], 0.0)
+        self.assertGreaterEqual(bt["wape_snaive"], 0.0)
+        self.assertLess(bt["wape_h30"], 1.0)
 
     def test_backtest_claves_y_metricas(self):
-        hist = serie_lineal(100, 14)
+        hist = serie_lineal(100, 60)
         bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
-        for k in ("mae_modelo", "mae_naive", "mae_ma7", "mape_modelo",
-                  "wape_modelo", "wape_naive", "wape_ma7", "smape_modelo",
-                  "sesgo_modelo", "gana", "n", "n_origenes",
-                  "horizonte_medio", "horizonte_max", "suficiente", "motivo"):
+        for k in ("mae_modelo", "mae_naive", "mae_snaive", "mae_ma7",
+                  "wape_modelo", "wape_naive", "wape_snaive", "wape_ma7",
+                  "smape_modelo", "sesgo_modelo", "gana", "n", "n_origenes",
+                  "horizonte_medio", "horizonte_max", "suficiente", "motivo",
+                  "wape_h1", "wape_h7", "wape_h30",
+                  "wape_snaive_h1", "wape_snaive_h7", "wape_snaive_h30",
+                  "n_h1", "n_h7", "n_h30",
+                  "gana_h1", "gana_h7", "gana_h30"):
             self.assertIn(k, bt)
+        self.assertNotIn("mape_modelo", bt)
         self.assertGreaterEqual(bt["wape_modelo"], 0.0)
         self.assertIsNotNone(bt["sesgo_modelo"])
         self.assertTrue(bt["suficiente"])
+        self.assertEqual(bt["n_h30"], 24)
+        self.assertLess(bt["wape_h30"], 1.0)
+        self.assertIsNotNone(bt["wape_snaive_h30"])
 
     def test_backtest_insuficiente_sin_metricas(self):
         hist = serie_lineal(100, 1)
@@ -111,6 +124,36 @@ class TestPronosticoFechas(unittest.TestCase):
         self.assertEqual(bt["n_origenes"], 0)
         self.assertIsNone(bt["wape_modelo"])
         self.assertIsNone(bt["sesgo_modelo"])
+        self.assertIsNone(bt["wape_h30"])
+        self.assertIsNone(bt["gana_h30"])
+
+    def test_backtest_usa_estacional_ingenuo(self):
+        base = dt.date(2026, 8, 3)  # lunes
+        hist = [(base + dt.timedelta(days=i),
+                 100.0 if (base + dt.timedelta(days=i)).weekday() < 5 else 200.0)
+                for i in range(56)]
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        self.assertLess(bt["wape_snaive"], bt["wape_naive"])
+        self.assertEqual(
+            bt["gana"],
+            bt["wape_modelo"] <= min(bt["wape_snaive"], bt["wape_ma7"]))
+
+    def test_backtest_serie_plana_no_divide_por_cero(self):
+        base = dt.date(2026, 9, 1)
+        hist = [(base + dt.timedelta(days=i), 0.0) for i in range(40)]
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        self.assertIsNone(bt["wape_modelo"])
+        self.assertIsNone(bt["wape_h30"])
+        self.assertFalse(bt["gana"])
+        self.assertFalse(bt["gana_h30"])
+
+    def test_backtest_fijo_informa_horizonte_real(self):
+        base = dt.date(2026, 1, 5)
+        hist = [(base + dt.timedelta(days=7 * i), 100.0 + 10 * i)
+                for i in range(12)]
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        self.assertEqual(bt["horizonte_medio_h7"], 7.0)
+        self.assertGreaterEqual(bt["horizonte_medio_h30"], 30.0)
 
     def test_backtest_mide_horizonte_real(self):
         # una observacion cada 7 dias: el error se mide a 7 dias, no a 1
@@ -216,6 +259,70 @@ class TestGraficaPronostico(unittest.TestCase):
             dt.date(2028, 2, 29), dt.date(2028, 3, 10))
         self.assertEqual(desde, dt.date(2027, 2, 28))
         self.assertEqual(hasta, dt.date(2027, 3, 10))
+
+
+class TestIntervalo(unittest.TestCase):
+    @staticmethod
+    def _hist(n=40):
+        base = dt.date(2026, 9, 1)
+        return [(base + dt.timedelta(days=i), 100.0 + (i % 3) * 10)
+                for i in range(n)]
+
+    @staticmethod
+    def _futuro(hist, dias=30):
+        return [(hist[-1][0] + dt.timedelta(days=i), 120.0)
+                for i in range(1, dias + 1)]
+
+    def test_banda_crece_con_horizonte_y_respeta_cero(self):
+        hist = self._hist()
+        banda = analytics.forecast_interval(hist, self._futuro(hist))
+        self.assertEqual(len(banda), 30)
+        anchos = [alto - bajo for _, bajo, alto in banda]
+        self.assertTrue(all(ancho >= 0 for ancho in anchos))
+        self.assertLess(anchos[0], anchos[-1])
+        self.assertTrue(all(bajo >= 0 for _, bajo, _ in banda))
+        self.assertTrue(all(alto >= bajo for _, bajo, alto in banda))
+
+    def test_nivel_mas_alto_ensancha(self):
+        hist = self._hist()
+        futuro = self._futuro(hist)
+        banda50 = analytics.forecast_interval(hist, futuro, 0.5)[0]
+        banda90 = analytics.forecast_interval(hist, futuro, 0.9)[0]
+        self.assertGreaterEqual(banda90[2] - banda90[1],
+                                banda50[2] - banda50[1])
+
+    def test_sin_datos_suficientes(self):
+        base = dt.date(2026, 9, 1)
+        self.assertEqual(analytics.forecast_interval([], []), [])
+        self.assertEqual(
+            analytics.forecast_interval(
+                [(base, 100.0)],
+                [(base + dt.timedelta(days=1), 100.0)]),
+            [])
+        hist = [(base, 100.0), (base + dt.timedelta(days=1), 110.0)]
+        self.assertEqual(
+            analytics.forecast_interval(
+                hist, [(base + dt.timedelta(days=2), 120.0)]),
+            [])
+
+
+class TestGanaMes(unittest.TestCase):
+    def test_solo_valida_con_backtest_a_30_dias(self):
+        self.assertTrue(analytics.gana_mes({"gana": False, "gana_h30": True}))
+        self.assertFalse(analytics.gana_mes({"gana": True, "gana_h30": False}))
+        self.assertFalse(analytics.gana_mes({"gana": True, "gana_h30": None}))
+        self.assertFalse(analytics.gana_mes({"gana": True}))
+
+
+class TestTextoBacktest(unittest.TestCase):
+    def test_muestra_wape_30_y_aclara_el_de_1_dia(self):
+        from app.screens.prediction_screen import PredictionScreen
+        hist = serie_lineal(100, 60)
+        bt = analytics.backtest([d for d, _ in hist], [v for _, v in hist])
+        texto = PredictionScreen._backtest_texto(bt)
+        self.assertIn("30 días", texto)
+        self.assertIn("WAPE", texto)
+        self.assertIn("no valida el mes", texto)
 
 
 class TestSignoColor(unittest.TestCase):

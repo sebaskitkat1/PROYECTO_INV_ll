@@ -466,7 +466,7 @@ def save_forecast(historia: list[tuple], diario: list[tuple],
              _numero(backtest.get("mae_naive")), _numero(backtest.get("mae_ma7")),
              _numero(backtest.get("wape_modelo")),
              _numero(backtest.get("sesgo_modelo")),
-             0 if backtest.get("gana") else 1))
+             0 if analytics.gana_mes(backtest) else 1))
         id_pronostico = int(cur.lastrowid)
 
         cur.executemany(

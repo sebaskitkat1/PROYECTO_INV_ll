@@ -51,9 +51,7 @@ def walk_forward_weekly(fechas, valores, min_train=21, horizonte=7, ndigits=-1) 
     def _mae(v):
         return sum(v) / len(v) if v else float("inf")
     mae = {n: _mae(v) for n, v in errs.items()}
-    media = sum(float(v) for _, v in pares) / len(pares) if pares else 0.0
     return {"mae_modelo": mae["modelo"], "mae_naive": mae["naive"], "mae_ma7": mae["ma7"],
-            "mape_modelo": (mae["modelo"] / media * 100.0) if media else 0.0,
             "gana": mae["modelo"] <= min(mae["naive"], mae["ma7"]),
             "residuales": residuales, "origenes": origenes}
 

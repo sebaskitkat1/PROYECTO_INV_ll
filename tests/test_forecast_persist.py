@@ -42,6 +42,19 @@ class _Cursor:
 
 
 class TestGuardarPronostico(unittest.TestCase):
+    @staticmethod
+    def _guardar(bt):
+        cur = _Cursor()
+        hist = [(dt.date(2026, 9, 1), 100.0), (dt.date(2026, 9, 2), 110.0)]
+        diario = [(dt.date(2026, 9, 3), 120.0), (dt.date(2026, 9, 4), 130.0)]
+        with patch("app.data.repository._hay_base", return_value=True), \
+                patch("app.data.repository._require_role", return_value="Administrador"), \
+                patch("app.data.repository.sucursal_id", return_value=3), \
+                patch("app.data.repository.db.transaction",
+                      return_value=nullcontext(cur)):
+            repository.save_forecast(hist, diario, [], bt, 9)
+        return next(p for s, p in cur.ejecutados if s.startswith("INSERT INTO pronosticos"))
+
     def test_inserta_cabecera_diario_y_reparto(self):
         cur = _Cursor()
         hist = [(dt.date(2026, 9, 1), 100.0), (dt.date(2026, 9, 2), 110.0)]
@@ -67,6 +80,14 @@ class TestGuardarPronostico(unittest.TestCase):
                        "ingresos_actual, ingresos_predicho, crecimiento_pct) "
                        "VALUES (%s, %s, %s, %s, %s)",
                        (77, 10, 100.0, 120.0, 20.0)), cur.ejecutados)
+
+    def test_preliminar_sigue_al_backtest_de_30_dias(self):
+        cabecera = self._guardar({"gana": True, "gana_h30": False})
+        self.assertEqual(cabecera[-1], 1)
+        cabecera = self._guardar({"gana": False, "gana_h30": True})
+        self.assertEqual(cabecera[-1], 0)
+        cabecera = self._guardar({"gana": True})
+        self.assertEqual(cabecera[-1], 1)
 
 
 class TestPantallaPronostico(unittest.TestCase):

@@ -233,7 +233,7 @@ installer/
 tests/
   test_inventory_table.py Tabla sin corrupción ni cruces (F01)
   test_stock_status.py    Reglas de estado y mock alineado (F05)
-  test_forecast.py        Pronóstico, backtest y reparto (F02/F06)
+  test_forecast.py        Pronóstico, backtest 1/7/30, banda y reparto (F02/F06)
   test_forecast_persist.py Guardado transaccional en pronosticos*
   test_repository.py      Mapeo, fallback y auth (rechazo + bitácora)
   test_cajero_diario.py   Guard demo y reabasto solo con órdenes propias
@@ -312,14 +312,16 @@ requirements-dev.txt      Dependencias de desarrollo y build
 - **Pronóstico:** regresión sobre fecha real con nivel en el último punto,
   estacionalidad semanal con 28+ días y 30 pasos diarios que arrancan hoy
   (no en el pasado). La gráfica muestra los últimos 30 días calendario,
-  corta la línea en huecos largos y marca aparte los picos fuera de escala
-  para que un día atípico no aplaste el resto de la serie. El backtest usa
-  el horizonte real en días calendario y reporta WAPE, sesgo y cobertura
-  contra ingenuo y media móvil; si no gana, se marca preliminar. El reparto
-  por producto compara 30 días contra 30 días y avisa cuántos días tuvieron
-  venta. La pantalla etiqueta si los datos son reales, simulados o mixtos.
-  Con base, Guardar pronóstico registra cabecera, 30 días, reparto, WAPE y
-  sesgo; sin conexión solo se ve.
+  corta la línea en huecos largos, marca aparte los picos fuera de escala
+  y dibuja una banda del 80% que se ensancha con el horizonte. El backtest
+  evalúa a 1, 7 y 30 días contra estacional ingenuo (mismo día de la semana
+  anterior) y media móvil 7; el WAPE a 30 días decide si el mes queda
+  validado y el de 1 día se muestra solo como referencia. Si no gana a 30
+  días, se marca preliminar. El reparto por producto compara 30 días contra
+  30 días y avisa cuántos días tuvieron venta. La pantalla etiqueta si los
+  datos son reales, simulados o mixtos. Con base, Guardar pronóstico
+  registra cabecera, 30 días, reparto, WAPE mixto y sesgo; sin conexión solo
+  se ve.
 - **Interfaz:** títulos, tablas, gráficas y botones; la caja solo muestra
   un aviso si no hay conexión. Roles: Administrador (todo y bitácora),
   Gerente (sin bitácora) y Cajero (caja, ventas e inventario, sin

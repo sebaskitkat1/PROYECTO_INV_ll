@@ -102,8 +102,10 @@ respaldo por días (`consumo_diario × dias_seguridad`). Es idempotente.
   mantiene ambos totales al insertar renglones.
 - `ventas.origen` es `real` o `simulado` (default `real`). La caja registra
   real; `sp_generar_ventas_demo` y el cajero diario registran simulado.
-- `pronosticos` guarda `mae_*`, `wape_modelo` y `sesgo_modelo`; WAPE y sesgo
-  pueden ser NULL si el backtest no tuvo datos suficientes.
+- `pronosticos` guarda `mae_*`, `wape_modelo` (backtest mixto) y
+  `sesgo_modelo`; WAPE y sesgo pueden ser NULL si el backtest no tuvo datos
+  suficientes. Los WAPE a 1, 7 y 30 días se calculan en la app y no se
+  persisten.
 - `estado` incluye `sin_minimo`; `dias_agotar` puede ser NULL ("—").
 - `consumo_diario` = ventas de recetas / días con venta + merma/caducidad /
   ventana de consumo. Un día sin venta no cuenta como cero; la merma se

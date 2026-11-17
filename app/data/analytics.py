@@ -378,8 +378,9 @@ def chart_scale(hist: list[tuple[_dt.date, float]],
 # nivel = valor ajustado en el ultimo punto: f(1) cae un paso de
 # pendiente adelante, sin el sesgo del promedio movil.
 # pasos diarios con etiqueta de dias reales. Con 28+ dias se suma
-# indice por dia de semana. Backtest rolling-origin contra ingenuo
-# y media movil 7: si el modelo no gana, es preliminar.
+# indice por dia de semana. Backtest rolling-origin y a 1/7/30 dias
+# contra estacional ingenuo y media movil 7. El WAPE a 30 dias manda:
+# el de 1 dia no valida el mes. La banda sale de residuales rodantes.
 
 MESES_CORTO = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
                "jul": 7, "ago": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dic": 12}
@@ -436,14 +437,14 @@ def dow_factors(fechas: list[_dt.date], valores: list[float]) -> dict[int, float
 
 
 def forecast_daily(history: list[tuple[_dt.date, float]], steps: int = 30,
-                 ndigits: int = -1, start: _dt.date | None = None
+                 ndigits: int = 0, start: _dt.date | None = None
                  ) -> list[tuple[_dt.date, float]]:
     """Pronostico diario desde hoy (o desde `start`), no desde el ultimo dato.
 
     Si el ultimo dato es viejo, el pronostico arranca hoy para no nacer en el
     pasado. `start` existe para pruebas deterministas y para simulaciones.
+    Por defecto redondea a unidades; los scripts de pesos pueden pasar -1.
     """
-    # ndigits sigue la escala: -1 en pesos (miles), 0 en unidades
     if not history or steps <= 0:
         return []
     hist = sorted(history, key=lambda p: p[0])
@@ -472,6 +473,12 @@ def _wape(predicciones: list[float], reales: list[float]) -> float | None:
     return sum(abs(p - r) for p, r in zip(predicciones, reales)) / total * 100.0
 
 
+def _mae(predicciones: list[float], reales: list[float]) -> float | None:
+    if not reales:
+        return None
+    return sum(abs(p - r) for p, r in zip(predicciones, reales)) / len(reales)
+
+
 def _smape(predicciones: list[float], reales: list[float]) -> float | None:
     if not reales:
         return None
@@ -489,28 +496,98 @@ def _sesgo(predicciones: list[float], reales: list[float]) -> float | None:
     return sum(p - r for p, r in zip(predicciones, reales)) / total * 100.0
 
 
+def _snaive(fechas: list[_dt.date], valores: list[float],
+            meta: _dt.date) -> float:
+    """Ingenua estacional: mismo dia de la semana anterior; si no hay, ultimo."""
+    for f, v in zip(reversed(fechas), reversed(valores)):
+        if f < meta and f.weekday() == meta.weekday():
+            return float(v)
+    return float(valores[-1]) if valores else 0.0
+
+
+def _metricas_horizonte(pares: list[tuple[_dt.date, float]], horizonte: int,
+                        min_origen: int) -> dict:
+    """Backtest con corte fijo: entrena con lo visible `horizonte` dias antes.
+
+    Con dias sin venta el corte cae en un hueco y el horizonte real es mayor;
+    se informa `horizonte_medio` para no vender un WAPE a 30 dias que en
+    realidad se midio a 35.
+    """
+    preds: dict[str, list[float]] = {
+        "modelo": [], "snaive": [], "naive": [], "ma7": []}
+    reales: list[float] = []
+    horizontes: list[int] = []
+    for meta, real in pares:
+        corte = meta - _dt.timedelta(days=horizonte)
+        tramo = [(d, v) for d, v in pares if d <= corte]
+        if len(tramo) < min_origen:
+            continue
+        f_tramo = [d for d, _ in tramo]
+        v_tramo = [float(v) for _, v in tramo]
+        h = max(1, (meta - f_tramo[-1]).days)
+        nivel, pend = fit_trend(f_tramo, v_tramo)
+        dow = dow_factors(f_tramo, v_tramo)
+        preds["modelo"].append((nivel + pend * h) * dow.get(meta.weekday(), 1.0))
+        preds["snaive"].append(_snaive(f_tramo, v_tramo, meta))
+        preds["naive"].append(v_tramo[-1])
+        preds["ma7"].append(sum(v_tramo[-7:]) / len(v_tramo[-7:]))
+        reales.append(float(real))
+        horizontes.append(h)
+
+    wape = {k: _wape(v, reales) for k, v in preds.items()}
+    mae = {k: _mae(v, reales) for k, v in preds.items()}
+    n = len(reales)
+    suficiente = n >= 3
+    candidatos = [w for w in (wape["snaive"], wape["ma7"]) if w is not None]
+    umbral = min(candidatos) if candidatos else None
+    gana = bool(suficiente and wape["modelo"] is not None
+                and umbral is not None and wape["modelo"] <= umbral)
+    return {
+        "wape_modelo": wape["modelo"], "wape_snaive": wape["snaive"],
+        "wape_naive": wape["naive"], "wape_ma7": wape["ma7"],
+        "mae_modelo": mae["modelo"], "mae_snaive": mae["snaive"],
+        "mae_naive": mae["naive"], "mae_ma7": mae["ma7"],
+        "sesgo_modelo": _sesgo(preds["modelo"], reales),
+        "n": n, "suficiente": suficiente, "gana": gana,
+        "horizonte_medio": sum(horizontes) / len(horizontes) if horizontes else 0.0,
+        "horizonte_max": max(horizontes) if horizontes else 0,
+    }
+
+
 def backtest(fechas: list[_dt.date], valores: list[float], min_origen: int = 7) -> dict:
     """Rolling-origin al horizonte real, en dias calendario.
 
     Cada origen entrena con lo anterior y predice la siguiente observacion a
     `h = fecha_siguiente - ultima_fecha` dias. No asume que la siguiente fila
     sea manana: si hay un hueco de 28 dias, el error se mide a 28 dias.
+
+    Ademas del mixto, mide cortes fijos a 1, 7 y 30 dias contra la ingenua
+    estacional (mismo dia de la semana anterior) y la media movil 7. El WAPE
+    a 30 dias es el que decide si el mes queda validado; el de 1 dia no.
     """
     pares = sorted(zip(fechas, valores), key=lambda p: p[0])
     n = len(pares)
     vacio = {
-        "mae_modelo": None, "mae_naive": None, "mae_ma7": None,
-        "mape_modelo": None, "wape_modelo": None, "wape_naive": None,
+        "mae_modelo": None, "mae_naive": None, "mae_snaive": None, "mae_ma7": None,
+        "wape_modelo": None, "wape_naive": None, "wape_snaive": None,
         "wape_ma7": None, "smape_modelo": None, "sesgo_modelo": None,
         "gana": False, "n": n, "n_origenes": 0,
         "horizonte_medio": 0.0, "horizonte_max": 0, "suficiente": False,
         "motivo": "muy pocos datos",
     }
+    for h in (1, 7, 30):
+        vacio.update({
+            f"wape_h{h}": None, f"wape_snaive_h{h}": None,
+            f"wape_ma7_h{h}": None, f"sesgo_h{h}": None,
+            f"n_h{h}": 0, f"gana_h{h}": None,
+            f"horizonte_medio_h{h}": 0.0,
+        })
     if n < 2:
         return vacio
 
     inicio = min(min_origen, n - 1)
-    preds: dict[str, list[float]] = {"modelo": [], "naive": [], "ma7": []}
+    preds: dict[str, list[float]] = {
+        "modelo": [], "naive": [], "snaive": [], "ma7": []}
     reales: list[float] = []
     horizontes: list[int] = []
     for k in range(inicio, n):
@@ -526,26 +603,24 @@ def backtest(fechas: list[_dt.date], valores: list[float], min_origen: int = 7) 
         h = max(1, (meta - f_tramo[-1]).days)
         preds["modelo"].append((nivel + pend * h) * dow.get(meta.weekday(), 1.0))
         preds["naive"].append(v_tramo[-1])
+        preds["snaive"].append(_snaive(f_tramo, v_tramo, meta))
         preds["ma7"].append(sum(v_tramo[-7:]) / len(v_tramo[-7:]))
         reales.append(real)
         horizontes.append(h)
 
-    def _mae(v: list[float]) -> float | None:
-        return sum(abs(p - r) for p, r in zip(v, reales)) / len(v) if v else None
-
-    mae = {k: _mae(v) for k, v in preds.items()}
+    mae = {k: _mae(v, reales) for k, v in preds.items()}
     wape = {k: _wape(v, reales) for k, v in preds.items()}
     n_origenes = len(reales)
     suficiente = n_origenes >= min_origen
-    umbral = min(wape["naive"] if wape["naive"] is not None else float("inf"),
-                 wape["ma7"] if wape["ma7"] is not None else float("inf"))
+    candidatos = [w for w in (wape["snaive"], wape["ma7"]) if w is not None]
+    umbral = min(candidatos) if candidatos else None
     gana = bool(suficiente and wape["modelo"] is not None
-                and wape["modelo"] <= umbral)
-    return {
-        "mae_modelo": mae["modelo"], "mae_naive": mae["naive"], "mae_ma7": mae["ma7"],
-        "mape_modelo": wape["modelo"],
+                and umbral is not None and wape["modelo"] <= umbral)
+    resultado = {
+        "mae_modelo": mae["modelo"], "mae_naive": mae["naive"],
+        "mae_snaive": mae["snaive"], "mae_ma7": mae["ma7"],
         "wape_modelo": wape["modelo"], "wape_naive": wape["naive"],
-        "wape_ma7": wape["ma7"],
+        "wape_snaive": wape["snaive"], "wape_ma7": wape["ma7"],
         "smape_modelo": _smape(preds["modelo"], reales),
         "sesgo_modelo": _sesgo(preds["modelo"], reales),
         "gana": gana, "n": n, "n_origenes": n_origenes,
@@ -554,6 +629,65 @@ def backtest(fechas: list[_dt.date], valores: list[float], min_origen: int = 7) 
         "suficiente": suficiente,
         "motivo": "" if suficiente else f"menos de {min_origen} origenes",
     }
+    for h in (1, 7, 30):
+        met = _metricas_horizonte(pares, h, min_origen)
+        resultado.update({
+            f"wape_h{h}": met["wape_modelo"],
+            f"wape_snaive_h{h}": met["wape_snaive"],
+            f"wape_ma7_h{h}": met["wape_ma7"],
+            f"sesgo_h{h}": met["sesgo_modelo"],
+            f"n_h{h}": met["n"],
+            f"gana_h{h}": met["gana"] if met["suficiente"] else None,
+            f"horizonte_medio_h{h}": met["horizonte_medio"],
+        })
+    return resultado
+
+
+def forecast_interval(history: list[tuple[_dt.date, float]],
+                      futuro: list[tuple[_dt.date, float]],
+                      nivel: float = 0.8
+                      ) -> list[tuple[_dt.date, float, float]]:
+    """Banda empirica alrededor del pronostico, al nivel pedido (0.8 = 80%).
+
+    Toma los errores absolutos de un backtest rodante a un paso y los ensancha
+    con la raiz del horizonte en dias. Devuelve [] si no hay 3+ errores.
+    """
+    if not history or not futuro:
+        return []
+    hist = sorted(history, key=lambda p: p[0])
+    fechas = [d for d, _ in hist]
+    valores = [float(v) for _, v in hist]
+    residuales: list[float] = []
+    for k in range(1, len(hist)):
+        f_tramo = fechas[:k]
+        v_tramo = valores[:k]
+        nivel_t, pend = fit_trend(f_tramo, v_tramo)
+        dow = dow_factors(f_tramo, v_tramo)
+        meta = fechas[k]
+        h = max(1, (meta - f_tramo[-1]).days)
+        pred = (nivel_t + pend * h) * dow.get(meta.weekday(), 1.0)
+        residuales.append(abs(pred - valores[k]))
+    if len(residuales) < 3:
+        return []
+    ancho_base = _cuantil(sorted(residuales), min(1.0, max(0.0, nivel)))
+    ultima = fechas[-1]
+    banda = []
+    for fecha, valor in futuro:
+        h = max(1, (fecha - ultima).days)
+        ancho = ancho_base * math.sqrt(h)
+        bajo = max(0.0, float(valor) - ancho)
+        alto = float(valor) + ancho
+        banda.append((fecha, round(bajo, 2), round(alto, 2)))
+    return banda
+
+
+def gana_mes(backtest: dict) -> bool:
+    """El mes solo queda validado si el backtest a 30 dias gana.
+
+    Sin datos suficientes a 30 dias no se puede afirmar que el mes sea mejor
+    que el ingenuo estacional; se marca preliminar aunque el mixto gane.
+    """
+    return backtest.get("gana_h30") is True
 
 
 def horizon_growth(ultimo: float, futuro: list[float]) -> float:
