@@ -1,4 +1,4 @@
-# cosecha — tu frutería en números (Escritorio)
+# Cosecha — tu frutería en números (Escritorio)
 
 App de escritorio en Python + PySide6 para ver ventas, inventario y pronóstico
 de una frutería. Lee de MySQL si hay conexión y usa el ejemplo si no;
@@ -25,13 +25,13 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 123 pruebas
+python -m unittest discover tests   # 164 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```
 Las pruebas usan datos de ejemplo (`CAFE_DATOS=mock` interno) para ser
 deterministas, incluidas las de UI (offscreen, sin ventana). CI corre lo
-mismo en `.github/workflows/ci.yml`.
+mismo en `.github/workflows/ci.yml` sobre Python 3.10 y 3.12.
 
 ## Empaquetado
 
@@ -48,7 +48,9 @@ El instalador requiere Inno Setup 6
 `%LOCALAPPDATA%\Programs\Cosecha` sin pedir administrador, incluye el
 schema y crea `.env` desde `.env.example` la primera vez. El portable
 necesita que copies tu `.env` junto al `.exe` (la app lo busca ahí primero).
-El build usa `cosecha.spec` y `main.py` como entrada.
+El build usa `cosecha.spec` y `main.py` como entrada; el `.spec` deja fuera
+tkinter y las herramientas de desarrollo y no usa UPX. `requirements.lock`
+fija las versiones exactas del entorno de build (Windows, Python 3.13).
 
 ## Registro y diagnóstico
 
@@ -234,7 +236,7 @@ tests/
   test_inventory_table.py Tabla sin corrupción ni cruces (F01)
   test_stock_status.py    Reglas de estado y mock alineado (F05)
   test_forecast.py        Pronóstico, backtest 1/7/30, banda y reparto (F02/F06)
-  test_forecast_persist.py Guardado transaccional en pronosticos*
+  test_forecast_persist.py Guardado transaccional y CSV del pronóstico
   test_repository.py      Mapeo, fallback y auth (rechazo + bitácora)
   test_cajero_diario.py   Guard demo y reabasto solo con órdenes propias
   test_db.py              Caché de disponibilidad de MySQL (30 s tras fallo)
@@ -245,10 +247,14 @@ tests/
   test_params.py          Umbrales desde parametros_sistema y defaults
   test_simulacion.py      FIFO, políticas, walk-forward y newsvendor
   test_ui_fixes.py        Orden numérico, formato miles, export, caducidad
-cosecha.spec              Receta de PyInstaller
+  test_empaquetado.py     Spec sin UPX, pin de matplotlib, CI y Dependabot
+cosecha.spec              Receta de PyInstaller (sin UPX, sin tkinter)
 pyproject.toml            Configuración de ruff y mypy
+requirements.txt          Dependencias de ejecución (matplotlib <3.11)
+requirements.lock         Versiones exactas del entorno de build (Python 3.13)
 requirements-dev.txt      Dependencias de desarrollo y build
-.github/workflows/ci.yml  CI: ruff, mypy y pruebas
+.github/workflows/ci.yml  CI: ruff, mypy y pruebas en Python 3.10 y 3.12
+.github/dependabot.yml    Actualizaciones mensuales de pip y GitHub Actions
 ```
 
 ## Qué hace
@@ -321,7 +327,8 @@ requirements-dev.txt      Dependencias de desarrollo y build
   30 días y avisa cuántos días tuvieron venta. La pantalla etiqueta si los
   datos son reales, simulados o mixtos. Con base, Guardar pronóstico
   registra cabecera, 30 días, reparto, WAPE mixto y sesgo; sin conexión solo
-  se ve.
+  se ve. Exportar CSV descarga fecha, ventas estimadas y los límites de la
+  banda del 80%.
 - **Interfaz:** títulos, tablas, gráficas y botones; la caja solo muestra
   un aviso si no hay conexión. Roles: Administrador (todo y bitácora),
   Gerente (sin bitácora) y Cajero (caja, ventas e inventario, sin

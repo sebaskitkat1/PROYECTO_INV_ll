@@ -3,6 +3,9 @@ from PyInstaller.utils.hooks import collect_data_files
 
 datas = collect_data_files("matplotlib")
 hiddenimports = ["mysql.connector", "bcrypt"]
+# tkinter y las herramientas de desarrollo/pruebas no se usan en runtime;
+# fuera del paquete para no engordar el instalador.
+excludes = ["tkinter", "pytest", "ruff", "mypy", "PyInstaller"]
 
 a = Analysis(
     ["main.py"],
@@ -13,7 +16,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )
@@ -28,7 +31,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -41,7 +44,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name="cosecha",
 )

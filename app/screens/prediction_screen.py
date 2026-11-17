@@ -9,6 +9,7 @@ from matplotlib.ticker import FuncFormatter
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -23,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import analytics, mock_data, repository
+from app.data import analytics, export_csv, mock_data, repository
 from app.data.app_state import AppState
 from app.data.async_loader import async_disponible, run_async
 from app.data.db import DBError
@@ -45,6 +46,7 @@ class PredictionScreen(QWidget):
         self._hist: list = []
         self._detalle_cache: list[dict] = []
         self._futuro: list = []
+        self._banda: list = []
         self._bt: dict = {}
 
         root = QVBoxLayout(self)
@@ -122,7 +124,9 @@ class PredictionScreen(QWidget):
         self._hist = data["hist"]
         self._detalle_cache = data["detalle"]
         self._futuro = data["futuro"]
+        self._banda = data.get("banda", [])
         self._bt = data["bt"]
+        self.export_btn.setEnabled(bool(self._futuro))
         self._clear_layout(self.chart_layout)
         self._clear_layout(self.table_layout)
         self.chart_layout.addWidget(
@@ -281,6 +285,9 @@ class PredictionScreen(QWidget):
         canvas.axes.yaxis.set_major_formatter(MplCanvas.miles_formatter())
         canvas.axes.margins(x=0.01, y=0.12)
         if tope is not None:
+            if banda:
+                # la banda no debe quedar cortada por el tope de outliers
+                tope = max(tope, max(alto for _, _, alto in banda))
             canvas.axes.set_ylim(top=tope * 1.08)
         canvas.axes.legend(fontsize=8, frameon=False, loc="best")
         canvas.redraw()
@@ -399,11 +406,43 @@ class PredictionScreen(QWidget):
         self.save_btn.clicked.connect(self._save_forecast)
         row.addWidget(self.save_btn)
 
+        self.export_btn = QPushButton("Exportar CSV")
+        self.export_btn.setProperty("role", "secondary")
+        self.export_btn.setCursor(Qt.PointingHandCursor)
+        self.export_btn.setEnabled(bool(self._futuro))
+        self.export_btn.clicked.connect(self._export_csv)
+        row.addWidget(self.export_btn)
+
         self.status_label = QLabel("base de datos" if self._online else "ejemplo (no se guarda)")
         self.status_label.setProperty("role", "micro")
         row.addStretch()
         row.addWidget(self.status_label)
         return row
+
+    def _export_csv(self) -> None:
+        if not self._futuro:
+            QMessageBox.information(
+                self, "Exportar", "No hay pronóstico para exportar.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar pronóstico", "pronostico.csv", "CSV (*.csv)")
+        if not path:
+            return
+        limites = {d: (bajo, alto) for d, bajo, alto in self._banda}
+        filas = []
+        for fecha, valor in self._futuro:
+            bajo, alto = limites.get(fecha, ("", ""))
+            filas.append([fecha.isoformat(), valor, bajo, alto])
+        try:
+            n = export_csv.guardar_csv(
+                path,
+                ["fecha", "ventas_estimadas", "limite_inferior",
+                 "limite_superior"],
+                filas)
+        except export_csv.ExportError as exc:
+            QMessageBox.warning(self, "Exportar", str(exc))
+            return
+        QMessageBox.information(self, "Exportar", f"Se guardaron {n} filas.")
 
     def _save_forecast(self) -> None:
         if not self._online:

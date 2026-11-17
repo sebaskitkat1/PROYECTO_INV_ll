@@ -104,6 +104,27 @@ class TestPantallaPronostico(unittest.TestCase):
         self.assertFalse(s.save_btn.isEnabled())
         self.assertIn("ejemplo", s.status_label.text())
 
+    def test_exporta_csv_con_banda(self):
+        import tempfile
+        s = PredictionScreen(on_navigate=lambda _x: None, on_logout=lambda: None)
+        s._futuro = [(dt.date(2026, 9, 1), 100.0), (dt.date(2026, 9, 2), 110.0)]
+        s._banda = [(dt.date(2026, 9, 1), 80.0, 120.0),
+                    (dt.date(2026, 9, 2), 90.0, 130.0)]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = os.path.join(tmp, "pronostico.csv")
+            with patch("app.screens.prediction_screen.QFileDialog.getSaveFileName",
+                       return_value=(ruta, "CSV (*.csv)")), \
+                    patch("app.screens.prediction_screen.QMessageBox.information"):
+                s._export_csv()
+            with open(ruta, "rb") as archivo:
+                crudo = archivo.read()
+        self.assertTrue(crudo.startswith(b"\xef\xbb\xbf"))
+        texto = crudo.decode("utf-8-sig")
+        self.assertIn(
+            "fecha,ventas_estimadas,limite_inferior,limite_superior", texto)
+        self.assertIn("2026-09-01,100.0,80.0,120.0", texto)
+        self.assertIn("2026-09-02,110.0,90.0,130.0", texto)
+
     def test_guardar_llama_al_repositorio(self):
         AppState.set_user("admin@frutidata.local", user_id=1)
         s = PredictionScreen(on_navigate=lambda _x: None, on_logout=lambda: None)
