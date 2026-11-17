@@ -102,6 +102,77 @@ class TestFallback(unittest.TestCase):
         self.assertEqual(datos["VACIA"], "")
 
 
+class TestAuthSimulado(unittest.TestCase):
+    def setUp(self):
+        import bcrypt
+        self.hash_valido = bcrypt.hashpw(b"clave-demo", bcrypt.gensalt()).decode()
+        self.user = {
+            "id_usuario": 3, "nombre": "Caja Demo",
+            "correo": "caja@frutidata.local", "password_hash": self.hash_valido,
+            "id_rol": 3, "activo": 1, "rol_nombre": "Cajero",
+        }
+        self.fallos_correo = 0
+        self.fallos_equipo = 0
+        self.ejecutados = []
+
+    def _fetchall(self, sql, params=()):
+        if "correo_intentado" in sql:
+            return [{"n": self.fallos_correo}]
+        if "equipo = %s" in sql:
+            return [{"n": self.fallos_equipo}]
+        if "FROM usuarios" in sql:
+            return [self.user]
+        raise AssertionError(f"consulta inesperada: {sql}")
+
+    def _execute(self, sql, params=()):
+        self.ejecutados.append((sql, params))
+        return 1
+
+    def _auth(self, correo="caja@frutidata.local", password="clave-demo"):
+        with patch.object(repository, "_hay_base"), \
+                patch.object(repository, "system_params", return_value={}), \
+                patch.object(repository, "_equipo", return_value="PC-PRUEBA"), \
+                patch.object(repository.db, "fetchall", side_effect=self._fetchall), \
+                patch.object(repository.db, "execute", side_effect=self._execute):
+            return repository.auth(correo, password)
+
+    def test_bloqueo_tras_cinco_fallos_por_correo(self):
+        self.fallos_correo = 5
+        with self.assertRaises(repository.AuthError):
+            self._auth()
+        self.assertEqual(self.ejecutados, [])
+
+    def test_bloqueo_por_equipo_con_umbral_alto(self):
+        self.fallos_equipo = 20
+        with self.assertRaises(repository.AuthError) as ctx:
+            self._auth()
+        self.assertIn("equipo", str(ctx.exception))
+        self.assertEqual(self.ejecutados, [])
+
+    def test_credenciales_validas(self):
+        user = self._auth()
+        self.assertEqual(user["rol"], "Cajero")
+        self.assertEqual(user["id"], 3)
+        self.assertEqual(len(self.ejecutados), 2)
+        self.assertIn("bitacora_accesos", self.ejecutados[0][0])
+        self.assertIn("ultimo_acceso", self.ejecutados[1][0])
+
+    def test_password_incorrecta_registra_fallo(self):
+        with self.assertRaises(repository.AuthError):
+            self._auth(password="otra-clave")
+        self.assertEqual(len(self.ejecutados), 1)
+        self.assertEqual(self.ejecutados[0][1][2], 0)
+
+    def test_hash_invalido_se_registra_y_rechaza(self):
+        self.user["password_hash"] = "esto-no-es-bcrypt"
+        with self.assertLogs("cosecha.auth", level="WARNING") as logs:
+            with self.assertRaises(repository.AuthError):
+                self._auth()
+        self.assertIn("ValueError", logs.output[0])
+        self.assertEqual(len(self.ejecutados), 1)
+        self.assertEqual(self.ejecutados[0][1][2], 0)
+
+
 class TestAuthReal(unittest.TestCase):
     def test_rechaza_hash_invalido_y_registra_bitacora(self):
         os.environ["CAFE_DATOS"] = "db"

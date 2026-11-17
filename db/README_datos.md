@@ -133,6 +133,13 @@ respaldo por días (`consumo_diario × dias_seguridad`). Es idempotente.
   `alerta_caducidad_dias`, `dias_alerta_agotar`, `abc_corte_a/b`,
   `ventana_consumo_dias`, `lead_time_default`, `dias_seguridad`,
   `dias_cobertura`, `xyz_ventana_dias`, `xyz_min_dias`, `xyz_corte_x`,
-  `xyz_corte_y`, `z_xyz_x/y/z`, `factor_calor_35/30`); la app los lee al
-  abrir inventario y usa defaults equivalentes si no hay base.
+  `xyz_corte_y`, `z_xyz_x/y/z`, `factor_calor_35/30`, `ventana_bloqueo_min`,
+  `max_intentos_equipo`); la app los lee al abrir inventario y usa defaults
+  equivalentes si no hay base.
+- Bloqueo de acceso: 5 fallos por correo o `max_intentos_equipo` (20 por
+  defecto) por equipo dentro de `ventana_bloqueo_min` (15 min por defecto)
+  impiden el intento. Se cuentan en `bitacora_accesos`; el bloqueo por correo
+  es temporal y se libera al pasar la ventana. Un atacante que conozca un
+  correo puede bloquearlo durante esa ventana; el administrador puede subir
+  o bajar `ventana_bloqueo_min` en `parametros_sistema`.
 - Clima de `clima_torreon` son promedios de referencia, no medición en vivo.

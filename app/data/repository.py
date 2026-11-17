@@ -7,6 +7,7 @@ lanza DBError y la pantalla usa el ejemplo.
 from __future__ import annotations
 
 import datetime
+import logging
 import math
 import os
 import socket
@@ -14,6 +15,8 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from app.data import analytics, db, params, roles
 from app.data.db import DBError
+
+_AUTH_LOG = logging.getLogger("cosecha.auth")
 
 CANTIDAD_MAX = Decimal("9999999.999")
 CANTIDAD_MIN = Decimal("0.001")
@@ -30,6 +33,7 @@ class AccessError(Exception):
 
 
 MAX_INTENTOS = 5
+MAX_INTENTOS_EQUIPO = 20
 VENTANA_BLOQUEO_MIN = 15
 
 ROLES_VENTA = {roles.ROL_ADMIN, roles.ROL_GERENTE, roles.ROL_CAJERO}
@@ -54,12 +58,42 @@ def _require_role(id_usuario: int | None, permitidos: set[str]) -> str:
     return rol
 
 
+def _ventana_bloqueo() -> int:
+    """Minutos de bloqueo configurables desde parametros_sistema."""
+    try:
+        return max(1, int(system_params().get("ventana_bloqueo_min",
+                                              VENTANA_BLOQUEO_MIN)))
+    except (TypeError, ValueError):
+        return VENTANA_BLOQUEO_MIN
+
+
+def _max_intentos_equipo() -> int:
+    try:
+        return max(1, int(system_params().get("max_intentos_equipo",
+                                              MAX_INTENTOS_EQUIPO)))
+    except (TypeError, ValueError):
+        return MAX_INTENTOS_EQUIPO
+
+
 def _intentos_fallidos(correo: str) -> int:
+    ventana = _ventana_bloqueo()
     filas = db.fetchall(
         "SELECT COUNT(*) AS n FROM bitacora_accesos "
         "WHERE correo_intentado = %s AND exitoso = 0 "
-        f"AND fecha_hora >= DATE_SUB(NOW(), INTERVAL {VENTANA_BLOQUEO_MIN} MINUTE)",
+        f"AND fecha_hora >= DATE_SUB(NOW(), INTERVAL {ventana} MINUTE)",
         (correo,))
+    return int(filas[0]["n"] or 0) if filas else 0
+
+
+def _intentos_fallidos_equipo(equipo: str | None) -> int:
+    if not equipo:
+        return 0
+    ventana = _ventana_bloqueo()
+    filas = db.fetchall(
+        "SELECT COUNT(*) AS n FROM bitacora_accesos "
+        "WHERE equipo = %s AND exitoso = 0 "
+        f"AND fecha_hora >= DATE_SUB(NOW(), INTERVAL {ventana} MINUTE)",
+        (equipo,))
     return int(filas[0]["n"] or 0) if filas else 0
 
 
@@ -512,9 +546,14 @@ def _equipo() -> str | None:
 def auth(correo: str, password: str) -> dict:
     _hay_base()
     correo = (correo or "").strip()
+    equipo = _equipo()
     if _intentos_fallidos(correo) >= MAX_INTENTOS:
         raise AuthError(
-            f"Demasiados intentos fallidos. Espera {VENTANA_BLOQUEO_MIN} minutos.")
+            f"Demasiados intentos fallidos. Espera {_ventana_bloqueo()} minutos.")
+    if _intentos_fallidos_equipo(equipo) >= _max_intentos_equipo():
+        raise AuthError(
+            "Demasiados intentos fallidos en este equipo. "
+            f"Espera {_ventana_bloqueo()} minutos.")
     filas = db.fetchall(
         "SELECT u.id_usuario, u.nombre, u.correo, u.password_hash, u.id_rol, "
         "u.activo, r.nombre AS rol_nombre "
@@ -527,10 +566,12 @@ def auth(correo: str, password: str) -> dict:
             import bcrypt
             valido = bcrypt.checkpw(password.encode("utf-8"),
                                     str(filas[0]["password_hash"]).encode("utf-8"))
-        except Exception:
+        except Exception as exc:  # hash con formato invalido, nunca se registra
+            _AUTH_LOG.warning("Hash de contrasena invalido (%s)",
+                              type(exc).__name__)
             valido = False
     db.execute("INSERT INTO bitacora_accesos (id_usuario, correo_intentado, exitoso, equipo) "
-               "VALUES (%s, %s, %s, %s)", (uid, correo, 1 if valido else 0, _equipo()))
+               "VALUES (%s, %s, %s, %s)", (uid, correo, 1 if valido else 0, equipo))
     if not valido:
         raise AuthError("Credenciales inválidas.")
     db.execute("UPDATE usuarios SET ultimo_acceso = NOW() WHERE id_usuario = %s", (uid,))

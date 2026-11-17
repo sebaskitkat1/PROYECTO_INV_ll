@@ -21,6 +21,9 @@ DEFAULTS: dict[str, float] = {
     "z_xyz_x": 1.28,
     "z_xyz_y": 1.65,
     "z_xyz_z": 2.33,
+    # Bloqueo de acceso: ventana y umbral por equipo.
+    "ventana_bloqueo_min": 15.0,
+    "max_intentos_equipo": 20.0,
 }
 
 

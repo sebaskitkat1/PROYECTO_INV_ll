@@ -1,6 +1,7 @@
 """Roles: permisos, navegacion filtrada y bitacora consultable."""
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["CAFE_DATOS"] = "mock"  # pruebas deterministas, sin base
@@ -40,11 +41,16 @@ class TestPermisos(unittest.TestCase):
         self.assertEqual(roles.rol_desde_id("3"), roles.ROL_CAJERO)
         self.assertEqual(roles.rol_desde_id(99), roles.ROL_CAJERO)
 
-    def test_modo_ejemplo_ve_todo_pero_no_compra(self):
-        for pantalla in ("pos", "sales", "inventory", "compras",
-                         "prediction", "bitacora"):
+    def test_modo_ejemplo_navega_sin_gestion(self):
+        for pantalla in ("pos", "sales", "inventory", "prediction"):
             self.assertTrue(roles.puede_ver(roles.ROL_EJEMPLO, pantalla))
+        for pantalla in ("compras", "bitacora"):
+            self.assertFalse(roles.puede_ver(roles.ROL_EJEMPLO, pantalla))
         self.assertFalse(roles.puede_comprar(roles.ROL_EJEMPLO))
+
+    def test_rol_ui_sin_sesion_es_cajero(self):
+        self.assertEqual(roles.rol_ui(None), roles.ROL_CAJERO)
+        self.assertEqual(roles.rol_ui(roles.ROL_ADMIN), roles.ROL_ADMIN)
 
 
 class TestNavBar(unittest.TestCase):
@@ -96,6 +102,40 @@ class TestLoginSinBase(unittest.TestCase):
         self.assertEqual(AppState.user_role, roles.ROL_EJEMPLO)
         self.assertIsNone(AppState.user_id)
         self.assertEqual(destinos, ["dashboard"])
+
+
+class TestLoginAsync(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def tearDown(self):
+        AppState.clear()
+
+    def test_login_usa_hilo_y_deshabilita_boton(self):
+        from app.data import async_loader
+        from app.screens.login_screen import LoginScreen
+
+        destinos = []
+        s = LoginScreen(on_login=destinos.append)
+        s.email_input.setText("demo@ejemplo.com")
+        s.password_input.setText("1234")
+        capturado = {}
+
+        def falso_run(owner, fn, on_done, on_error=None):
+            capturado["fn"] = fn
+            capturado["done"] = on_done
+
+        with patch.object(async_loader, "async_disponible", return_value=True), \
+                patch.object(async_loader, "run_async", side_effect=falso_run):
+            s._finish_login()
+            self.assertFalse(s.login_button.isEnabled())
+            self.assertEqual(s.login_button.text(), "Entrando…")
+            capturado["done"](("credenciales", None))
+
+        self.assertTrue(s.login_button.isEnabled())
+        self.assertFalse(s.error_label.isHidden())
+        self.assertEqual(destinos, [])
 
 
 class TestPantallasPorRol(unittest.TestCase):

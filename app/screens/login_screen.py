@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import styles
-from app.data import repository, roles
+from app.data import async_loader, repository, roles
 from app.data.app_state import AppState
 from app.data.db import DBError
 
@@ -87,6 +87,8 @@ class LoginScreen(QWidget):
         self.error_label.setVisible(False)
 
     def _handle_login(self) -> None:
+        if not self.login_button.isEnabled():
+            return
         email = self.email_input.text().strip()
         password = self.password_input.text()
         if "@" not in email or "." not in email.split("@")[-1]:
@@ -98,33 +100,57 @@ class LoginScreen(QWidget):
             self.error_label.setVisible(True)
             return
         self.error_label.setVisible(False)
-        self.login_button.setEnabled(False)
-        self.login_button.setText("Entrando…")
+        self._set_busy(True)
         QTimer.singleShot(600, self._finish_login)
+
+    @staticmethod
+    def _autenticar(email: str, password: str) -> tuple[str, dict | None]:
+        """Devuelve el estado en vez de lanzar: run_async solo entrega texto."""
+        try:
+            return "ok", repository.auth(email, password)
+        except repository.AuthError:
+            return "credenciales", None
+        except DBError:
+            return "sin_base", None
 
     def _finish_login(self) -> None:
         email = self.email_input.text()
         password = self.password_input.text()
-        try:
-            user = repository.auth(email, password)
-        except repository.AuthError:
+        self._set_busy(True)
+        if async_loader.async_disponible():
+            async_loader.run_async(
+                self,
+                lambda: self._autenticar(email, password),
+                self._login_resultado,
+                self._login_error,
+            )
+        else:
+            self._login_resultado(self._autenticar(email, password))
+
+    def _login_resultado(self, resultado: tuple[str, dict | None]) -> None:
+        self._set_busy(False)
+        estado, user = resultado
+        if estado == "credenciales":
             self._fallo("Credenciales inválidas.")
             return
-        except DBError:
-            # sin base: entra en modo ejemplo con la validacion de formato
+        if estado == "sin_base":
             user = None
-        self.login_button.setEnabled(True)
-        self.login_button.setText("Entrar")
         if user is None:
             # sin base se puede recorrer la app, pero no actuar como admin
-            AppState.set_user(email, role=roles.ROL_EJEMPLO)
+            AppState.set_user(self.email_input.text(), role=roles.ROL_EJEMPLO)
         else:
             AppState.set_user(user["correo"], user["id"], repository.sucursal_id(),
                               user.get("rol"))
         self.on_login("dashboard")
 
+    def _login_error(self, _mensaje: str) -> None:
+        self._fallo("No se pudo conectar con la base. Intenta de nuevo.")
+
+    def _set_busy(self, ocupado: bool) -> None:
+        self.login_button.setEnabled(not ocupado)
+        self.login_button.setText("Entrando…" if ocupado else "Entrar")
+
     def _fallo(self, texto: str) -> None:
-        self.login_button.setEnabled(True)
-        self.login_button.setText("Entrar")
+        self._set_busy(False)
         self.error_label.setText(texto)
         self.error_label.setVisible(True)

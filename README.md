@@ -101,7 +101,8 @@ seguridad y cobertura, ventana/cortes XYZ y factores z) se leen de
 Los roles salen de `roles`: Administrador ve todo y consulta la bitácora;
 Gerente no ve bitácora;
 Cajero registra ventas en Caja y no ve pronóstico ni compras. Sin base se
-entra en modo Ejemplo: se puede recorrer la app, pero no comprar ni escribir.
+entra en modo Ejemplo: se puede recorrer la app, pero no comprar ni escribir
+y Compras y Bitácora quedan ocultas.
 
 Sin MySQL a la mano la app abre igual con el ejemplo. El status de
 Ventas indica la fuente ("base de datos" o "ejemplo"). Ver
@@ -250,7 +251,11 @@ requirements-dev.txt      Dependencias de desarrollo y build
 - **Acceso:** contra `usuarios` con bcrypt (bitácora + último acceso); sin
   base entra en modo ejemplo con validación de formato. Enter funciona.
   Al salir la sesión se borra y el login vuelve limpio. El rol se muestra
-  en la barra y filtra la navegación.
+  en la barra y filtra la navegación. Tras 5 fallos por correo o 20 por
+  equipo en la ventana `ventana_bloqueo_min` (15 min por defecto) se
+  bloquea el intento; un atacante que conozca un correo puede bloquearlo
+  temporalmente, así que el administrador puede ajustar ese parámetro en
+  `parametros_sistema`.
 - **Bitácora:** pantalla de accesos (fecha, usuario, correo, resultado y
   equipo) visible para Administrador, con botón para actualizar.
 - **Resumen:** KPIs calculados (ventas del último día + variación vs ayer,

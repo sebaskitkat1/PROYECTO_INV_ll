@@ -22,8 +22,8 @@ def rol_desde_id(id_rol: int | str | None) -> str:
 
 def puede_ver(rol: str | None, pantalla: str) -> bool:
     if rol == ROL_EJEMPLO:
-        # modo sin base: se puede recorrer la app, pero no escribir
-        return True
+        # modo sin base: se puede recorrer la app, pero no hay gestion real
+        return pantalla not in (PANTALLA_COMPRAS, PANTALLA_BITACORA)
     if pantalla in (PANTALLA_COMPRAS, PANTALLA_PREDICCION):
         return rol in (ROL_ADMIN, ROL_GERENTE)
     if pantalla == PANTALLA_BITACORA:
@@ -36,5 +36,5 @@ def puede_comprar(rol: str | None) -> bool:
 
 
 def rol_ui(rol: str | None) -> str:
-    # sin sesion (p. ej. pruebas de pantalla) se muestra la vista completa
-    return rol or ROL_ADMIN
+    # sin sesion se usa el rol de menor privilegio, nunca Administrador
+    return rol or ROL_CAJERO

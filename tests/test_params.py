@@ -16,7 +16,8 @@ class TestDefaults(unittest.TestCase):
                       "ventana_consumo_dias", "lead_time_default",
                       "dias_seguridad", "dias_cobertura",
                       "xyz_ventana_dias", "xyz_min_dias", "xyz_corte_x",
-                      "xyz_corte_y", "z_xyz_x", "z_xyz_y", "z_xyz_z"):
+                      "xyz_corte_y", "z_xyz_x", "z_xyz_y", "z_xyz_z",
+                      "ventana_bloqueo_min", "max_intentos_equipo"):
             self.assertIn(clave, d)
         self.assertEqual(d["umbral_advertencia"], 1.25)
         self.assertEqual(d["objetivo_reorden"], 2.0)
