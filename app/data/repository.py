@@ -12,6 +12,7 @@ import math
 import os
 import socket
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any
 
 from app.data import analytics, db, params, roles
 from app.data.db import DBError
@@ -770,6 +771,113 @@ def _cantidad_decimal(valor: object) -> Decimal:
     return cantidad
 
 
+def _pedidos_validados(items: list[dict]) -> dict[int, Decimal]:
+    pedidos: dict[int, Decimal] = {}
+    for item in items:
+        try:
+            id_producto = int(item.get("id_producto") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Producto o cantidad inválidos.") from exc
+        if id_producto <= 0:
+            raise ValueError("Producto o cantidad inválidos.")
+        cantidad = _cantidad_decimal(item.get("cantidad"))
+        pedidos[id_producto] = pedidos.get(id_producto, Decimal("0")) + cantidad
+    if any(cantidad > CANTIDAD_MAX for cantidad in pedidos.values()):
+        raise ValueError("La cantidad es demasiado grande.")
+    return pedidos
+
+
+def _descuento_validado(descuento: float) -> Decimal:
+    try:
+        descuento_dec = Decimal(str(descuento or 0))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("Descuento inválido.") from exc
+    if not descuento_dec.is_finite():
+        raise ValueError("Descuento inválido.")
+    return max(Decimal("0"), descuento_dec).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _productos_validados(cur: Any, ids: tuple[int, ...],
+                         marcadores: str) -> dict[int, dict]:
+    cur.execute(
+        f"SELECT id_producto, nombre, precio_venta, costo_unitario "
+        f"FROM productos WHERE activo = 1 AND id_producto IN ({marcadores})",
+        ids)
+    productos = {int(f["id_producto"]): f for f in cur.fetchall()}
+    faltantes = [str(i) for i in ids if i not in productos]
+    if faltantes:
+        raise ValueError("Producto no disponible: " + ", ".join(faltantes) + ".")
+    return productos
+
+
+def _metodo_pago_validado(cur: Any, id_metodo_pago: int) -> None:
+    cur.execute("SELECT id_metodo_pago FROM metodos_pago WHERE id_metodo_pago = %s",
+                (int(id_metodo_pago),))
+    if not cur.fetchone():
+        raise ValueError("Método de pago inválido.")
+
+
+def _requeridos_por_receta(cur: Any, ids: tuple[int, ...],
+                           pedidos: dict[int, Decimal],
+                           marcadores: str) -> dict[int, Decimal]:
+    cur.execute(
+        f"SELECT id_producto, id_ingrediente, cantidad FROM recetas "
+        f"WHERE id_producto IN ({marcadores})", ids)
+    requeridos: dict[int, Decimal] = {}
+    for receta in cur.fetchall():
+        id_ingrediente = int(receta["id_ingrediente"])
+        id_producto = int(receta["id_producto"])
+        requeridos[id_ingrediente] = (
+            requeridos.get(id_ingrediente, Decimal("0"))
+            + Decimal(str(receta["cantidad"])) * pedidos[id_producto]
+        )
+    return requeridos
+
+
+def _verificar_stock(cur: Any, sucursal: int,
+                     requeridos: dict[int, Decimal]) -> None:
+    if not requeridos:
+        return
+    ids_ingredientes = tuple(requeridos)
+    marcadores_ing = ",".join(["%s"] * len(ids_ingredientes))
+    cur.execute(
+        f"SELECT inv.id_ingrediente, i.nombre, inv.stock_actual "
+        f"FROM inventario inv "
+        f"JOIN ingredientes i ON i.id_ingrediente = inv.id_ingrediente "
+        f"WHERE inv.id_sucursal = %s "
+        f"AND inv.id_ingrediente IN ({marcadores_ing}) "
+        f"ORDER BY inv.id_ingrediente FOR UPDATE",
+        (sucursal, *ids_ingredientes))
+    existencias = {
+        int(f["id_ingrediente"]): (str(f["nombre"]),
+                                   Decimal(str(f["stock_actual"])))
+        for f in cur.fetchall()
+    }
+    faltantes = []
+    for id_ingrediente, requerido in requeridos.items():
+        nombre, disponible = existencias.get(
+            id_ingrediente, (f"ingrediente {id_ingrediente}", Decimal("0")))
+        if disponible < requerido:
+            faltantes.append(
+                f"{nombre}: disponible {disponible:.3f}, "
+                f"requerido {requerido:.3f}")
+    if faltantes:
+        raise ValueError("Stock insuficiente — " + "; ".join(faltantes) + ".")
+
+
+def _validar_descuento(productos: dict[int, dict],
+                       pedidos: dict[int, Decimal],
+                       descuento_dec: Decimal) -> None:
+    subtotal = sum(
+        (Decimal(str(productos[i]["precio_venta"])) * cantidad
+         for i, cantidad in pedidos.items()),
+        Decimal("0"),
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if descuento_dec > subtotal:
+        raise ValueError("El descuento no puede ser mayor al subtotal.")
+
+
 def register_sale(items: list[dict], id_metodo_pago: int,
                   id_usuario: int | None, descuento: float = 0.0,
                   origen: str = "real") -> dict:
@@ -787,28 +895,8 @@ def register_sale(items: list[dict], id_metodo_pago: int,
     if origen not in ("real", "simulado"):
         raise ValueError("Origen de venta inválido.")
 
-    pedidos: dict[int, Decimal] = {}
-    for item in items:
-        try:
-            id_producto = int(item.get("id_producto") or 0)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("Producto o cantidad inválidos.") from exc
-        if id_producto <= 0:
-            raise ValueError("Producto o cantidad inválidos.")
-        cantidad = _cantidad_decimal(item.get("cantidad"))
-        pedidos[id_producto] = pedidos.get(id_producto, Decimal("0")) + cantidad
-
-    if any(cantidad > CANTIDAD_MAX for cantidad in pedidos.values()):
-        raise ValueError("La cantidad es demasiado grande.")
-
-    try:
-        descuento_dec = Decimal(str(descuento or 0))
-    except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValueError("Descuento inválido.") from exc
-    if not descuento_dec.is_finite():
-        raise ValueError("Descuento inválido.")
-    descuento_dec = max(Decimal("0"), descuento_dec).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP)
+    pedidos = _pedidos_validados(items)
+    descuento_dec = _descuento_validado(descuento)
 
     _hay_base()
     _require_role(id_usuario, ROLES_VENTA)
@@ -817,67 +905,11 @@ def register_sale(items: list[dict], id_metodo_pago: int,
     with db.transaction() as cur:
         ids = tuple(pedidos)
         marcadores = ",".join(["%s"] * len(ids))
-        cur.execute(
-            f"SELECT id_producto, nombre, precio_venta, costo_unitario "
-            f"FROM productos WHERE activo = 1 AND id_producto IN ({marcadores})",
-            ids)
-        productos = {int(f["id_producto"]): f for f in cur.fetchall()}
-        faltantes = [str(i) for i in ids if i not in productos]
-        if faltantes:
-            raise ValueError(
-                "Producto no disponible: " + ", ".join(faltantes) + ".")
-
-        cur.execute("SELECT id_metodo_pago FROM metodos_pago WHERE id_metodo_pago = %s",
-                    (int(id_metodo_pago),))
-        if not cur.fetchone():
-            raise ValueError("Método de pago inválido.")
-
-        # Verifica existencias antes de insertar. Bloquea las filas de inventario
-        # para que dos cajas no puedan vender el mismo stock a la vez.
-        cur.execute(
-            f"SELECT id_producto, id_ingrediente, cantidad FROM recetas "
-            f"WHERE id_producto IN ({marcadores})", ids)
-        requeridos: dict[int, Decimal] = {}
-        for receta in cur.fetchall():
-            id_ingrediente = int(receta["id_ingrediente"])
-            id_producto = int(receta["id_producto"])
-            requeridos[id_ingrediente] = (
-                requeridos.get(id_ingrediente, Decimal("0"))
-                + Decimal(str(receta["cantidad"])) * pedidos[id_producto]
-            )
-        if requeridos:
-            ids_ingredientes = tuple(requeridos)
-            marcadores_ing = ",".join(["%s"] * len(ids_ingredientes))
-            cur.execute(
-                f"SELECT inv.id_ingrediente, i.nombre, inv.stock_actual "
-                f"FROM inventario inv "
-                f"JOIN ingredientes i ON i.id_ingrediente = inv.id_ingrediente "
-                f"WHERE inv.id_sucursal = %s "
-                f"AND inv.id_ingrediente IN ({marcadores_ing}) FOR UPDATE",
-                (sucursal, *ids_ingredientes))
-            existencias = {
-                int(f["id_ingrediente"]): (str(f["nombre"]),
-                                           Decimal(str(f["stock_actual"])))
-                for f in cur.fetchall()
-            }
-            faltantes = []
-            for id_ingrediente, requerido in requeridos.items():
-                nombre, disponible = existencias.get(
-                    id_ingrediente, (f"ingrediente {id_ingrediente}", Decimal("0")))
-                if disponible < requerido:
-                    faltantes.append(
-                        f"{nombre}: disponible {disponible:.3f}, "
-                        f"requerido {requerido:.3f}")
-            if faltantes:
-                raise ValueError("Stock insuficiente — " + "; ".join(faltantes) + ".")
-
-        subtotal = sum(
-            (Decimal(str(productos[i]["precio_venta"])) * cantidad
-             for i, cantidad in pedidos.items()),
-            Decimal("0"),
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if descuento_dec > subtotal:
-            raise ValueError("El descuento no puede ser mayor al subtotal.")
+        productos = _productos_validados(cur, ids, marcadores)
+        _metodo_pago_validado(cur, id_metodo_pago)
+        requeridos = _requeridos_por_receta(cur, ids, pedidos, marcadores)
+        _verificar_stock(cur, sucursal, requeridos)
+        _validar_descuento(productos, pedidos, descuento_dec)
 
         cur.execute(
             "INSERT INTO ventas (id_sucursal, id_usuario, id_metodo_pago, "

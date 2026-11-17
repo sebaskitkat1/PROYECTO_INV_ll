@@ -93,6 +93,10 @@ archivo sin `.sql`). `db/init_schema.sql` solo crea la base si no existe y no
 borra datos. `db/dev_reset.sql` borra la base completa y es exclusivo de
 desarrollo: no se distribuye en el instalador. La app debe conectarse como
 `cosecha_app` (SELECT, INSERT, UPDATE y EXECUTE), no como root.
+`DB_SSL=1` exige TLS (recomendado si la base no es local) y `DB_POOL_SIZE`
+ajusta el pool de conexiones (4 por defecto). Un fallo de conexión se
+recuerda 30 s para no reintentar en cada pantalla; `db.reset_availability()`
+fuerza un reintento inmediato.
 
 Los umbrales de inventario (advertencia, reorden, caducidad, días de
 alerta, cortes ABC, ventana de consumo, lead time por defecto, días de
@@ -233,6 +237,7 @@ tests/
   test_forecast_persist.py Guardado transaccional en pronosticos*
   test_repository.py      Mapeo, fallback y auth (rechazo + bitácora)
   test_cajero_diario.py   Guard demo y reabasto solo con órdenes propias
+  test_db.py              Caché de disponibilidad de MySQL (30 s tras fallo)
   test_roles.py           Permisos, nav filtrada, compras y bitácora
   test_orders.py          Órdenes de compra: mapeo, detalle y ejemplo
   test_pos.py             Catálogo, carrito, validaciones y navegación de caja
