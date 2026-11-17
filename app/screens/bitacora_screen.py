@@ -90,25 +90,27 @@ class BitacoraScreen(QWidget):
 
     def _reload(self) -> None:
         if not async_disponible():
-            self._apply_rows(self._load_rows())
+            try:
+                filas = self._load_rows()
+            except DBError:
+                self._on_error("sin conexión")
+                return
+            self._apply_rows(filas)
             return
         self.status_label.setText("Cargando bitácora…")
         run_async(self, self._load_rows, self._apply_rows, self._on_error)
 
     @staticmethod
     def _load_rows() -> list[dict]:
-        try:
-            return repository.bitacora_rows()
-        except DBError:
-            return []
+        return repository.bitacora_rows()
 
     def _apply_rows(self, rows: list[dict]) -> None:
         self._populate(rows)
-        fuente = "sin conexión" if not rows else repository.etiqueta_fuente()
-        self.status_label.setText(f"{len(rows)} registros · {fuente}")
+        self.status_label.setText(f"{len(rows)} registros · base de datos")
 
     def _on_error(self, _mensaje: str) -> None:
-        self._apply_rows([])
+        self._populate([])
+        self.status_label.setText("0 registros · sin conexión")
 
     def _populate(self, rows: list[dict]) -> None:
         self.table.setSortingEnabled(False)

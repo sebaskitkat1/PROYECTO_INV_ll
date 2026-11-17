@@ -105,7 +105,8 @@ def _pedidos(serie: list[tuple[dt.date, float]], inicio: int,
         fechas = [d for d, _ in hist]
         vals = [v for _, v in hist]
         base = sim_lib.pedido_base(fechas, vals)
-        pron = analytics.forecast_daily(list(zip(fechas, vals)), 1, 0)[0][1]
+        pron = analytics.forecast_daily(list(zip(fechas, vals)), 1, 0,
+                                        start=serie[k][0])[0][1]
         res = sim_lib.residuales_rodantes(fechas, vals, ndigits=0)
         modelo = sim_lib.pedido_newsvendor(pron, res, precio, costo)
         filas.append({

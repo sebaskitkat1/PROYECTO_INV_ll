@@ -241,6 +241,9 @@ class InventoryScreen(QWidget):
         except DBError:
             QMessageBox.warning(self, "Caducidad", "Sin conexion a la base.")
             return
+        except Exception as exc:  # error del motor SQL, no de conexion
+            QMessageBox.warning(self, "Caducidad", f"No se pudo purgar: {exc}")
+            return
         QMessageBox.information(self, "Caducidad", f"Se dieron de baja {n} lotes vencidos.")
         self.inventory = store.reset_inventory()
         self._reload_table()
@@ -579,6 +582,10 @@ class InventoryScreen(QWidget):
                 return
             except DBError:
                 QMessageBox.warning(self, "Sin conexion", "No se pudo guardar en la base.")
+                self._reload_table()
+                return
+            except Exception as exc:  # error del motor SQL, no de conexion
+                QMessageBox.warning(self, "Inventario", f"No se pudo guardar: {exc}")
                 self._reload_table()
                 return
             self.inventory = store.reset_inventory()

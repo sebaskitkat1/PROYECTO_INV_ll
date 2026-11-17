@@ -9,9 +9,14 @@ class ExportError(Exception):
 
 
 def limpiar_valor(valor):
-    # neutraliza inyeccion de formulas (=, +, -, @ al inicio)
-    if isinstance(valor, str) and valor[:1] in ("=", "+", "-", "@"):
-        return "'" + valor
+    # neutraliza inyeccion de formulas: =, +, -, @ al inicio y controles que
+    # Excel ignora antes de evaluar (tabulador, CR, LF y espacios)
+    if isinstance(valor, str):
+        primero = valor[:1]
+        limpio = valor.lstrip(" \t\r\n")[:1]
+        if primero in ("=", "+", "-", "@", "\t", "\r", "\n") or \
+                limpio in ("=", "+", "-", "@"):
+            return "'" + valor
     return valor
 
 

@@ -89,7 +89,14 @@ class PredictionScreen(QWidget):
             self._apply_data(self._fetch_data())
             return
         run_async(self, self._fetch_data, self._apply_data,
-                  lambda _mensaje: self._apply_data(self._fallback_data()))
+                  lambda _mensaje: self._apply_fallback())
+
+    def _apply_fallback(self) -> None:
+        # sin base no se puede guardar: los datos visibles son de ejemplo
+        self._online = False
+        self.save_btn.setEnabled(False)
+        self.status_label.setText("ejemplo (no se guarda)")
+        self._apply_data(self._fallback_data())
 
     @staticmethod
     def _fetch_data() -> dict:

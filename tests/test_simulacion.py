@@ -83,6 +83,29 @@ class TestNewsvendor(unittest.TestCase):
         todos = [e for v in res.values() for e in v]
         self.assertLessEqual(max(abs(e) for e in todos), 10.0)
 
+
+class TestPedidoHistorico(unittest.TestCase):
+    """El pronostico de la simulacion debe nacer en el dia simulado."""
+
+    def test_run_producto_pronostica_el_dia_simulado(self):
+        from scripts.simulacion.run_producto import _pedidos
+        base = dt.date(2020, 1, 1)
+        serie = [(base + dt.timedelta(days=i), 100.0 + i) for i in range(30)]
+        filas = _pedidos(serie, 21, precio=25.0, costo=11.0)
+        self.assertTrue(filas)
+        for fila in filas:
+            # sin start, el trend se extrapola hasta hoy y el pedido se dispara
+            self.assertLess(fila["pronostico"], 160.0)
+
+    def test_run_simulacion_pronostica_el_dia_simulado(self):
+        from scripts.simulacion.run_simulacion import _pedido_modelo
+        base = dt.date(2020, 1, 1)
+        fechas = [base + dt.timedelta(days=i) for i in range(30)]
+        vals = [100.0 + i for i in range(30)]
+        pedido = _pedido_modelo(fechas, vals, precio=25.0, costo=11.0)
+        self.assertLess(pedido, 200.0)
+
+
 class TestWalkForward(unittest.TestCase):
     def test_metricas_y_residuales(self):
         hist = serie_lineal(100, 30)

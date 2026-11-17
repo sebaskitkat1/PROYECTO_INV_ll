@@ -24,6 +24,15 @@ os.makedirs(SALIDA, exist_ok=True)
 RUNS = 200
 
 
+def _pedido_modelo(fechas: list[dt.date], vals: list[float],
+                   precio: float, costo: float) -> float:
+    """Pedido newsvendor para el dia siguiente al ultimo dato historico."""
+    h = list(zip(fechas, vals))
+    fut1 = analytics.forecast_daily(h, 1, 0, start=fechas[-1] + dt.timedelta(days=1))[0][1]
+    res = sim_lib.residuales_rodantes(fechas, vals, ndigits=0)
+    return sim_lib.pedido_newsvendor(fut1, res, precio, costo)
+
+
 def demanda_diaria(id_producto, dias=90):
     filas = db.fetchall(
         "SELECT DATE(v.fecha_hora) AS f, SUM(d.cantidad) AS c "
@@ -72,10 +81,7 @@ def main():
             dem.append(vals[k])
             fsim.append(fechas[k])
             pb.append(sim_lib.pedido_base(fechas[:k], vals[:k]))
-            h = list(zip(fechas[:k], vals[:k]))
-            fut1 = analytics.forecast_daily(h, 1, 0)[0][1]
-            res = sim_lib.residuales_rodantes(fechas[:k], vals[:k], ndigits=0)
-            pm.append(sim_lib.pedido_newsvendor(fut1, res, precio, costo))
+            pm.append(_pedido_modelo(fechas[:k], vals[:k], precio, costo))
         # seleccion por dinero en la primera mitad; se evalua en la segunda (no vista)
         mid = len(dem) // 2
         c0 = sim_lib.simulate_inventory(dem[:mid], pb[:mid], vida, costo, precio)

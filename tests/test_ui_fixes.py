@@ -1,6 +1,7 @@
 """F08/F09/F11 + caducidad: orden, formato, export y alerta."""
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["CAFE_DATOS"] = "mock"  # pruebas deterministas, sin base
@@ -9,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QTableWidget
 
 from app.data import export_csv, repository
+from app.data.db import DBError
 from app.widgets.mpl_canvas import fmt_miles
 from app.widgets.table_items import NumericItem, TextItem
 
@@ -62,6 +64,14 @@ class TestExport(unittest.TestCase):
         with self.assertRaises(ExportError):
             export_csv.guardar_csv("/ruta/que/no/existe/x.csv", ["a"], [{"a": 1}])
 
+    def test_controles_antes_de_formula(self):
+        # Excel ignora tabulador/CR/LF y espacios iniciales antes de evaluar
+        for valor in ("\t=1+1", "\r=1+1", "\n=1+1", "\t@SUM(A1)", " =1+1"):
+            self.assertTrue(export_csv.limpiar_valor(valor).startswith("'"),
+                            repr(valor))
+        self.assertEqual(export_csv.limpiar_valor("Mango"), "Mango")
+        self.assertEqual(export_csv.limpiar_valor("  Mango"), "  Mango")
+
 
 class TestCaducidad(unittest.TestCase):
     @classmethod
@@ -80,6 +90,82 @@ class TestCaducidad(unittest.TestCase):
         s = InventoryScreen(on_navigate=lambda x: None, on_logout=lambda: None)
         self.assertEqual(s.expiry_label.text(), "")
         self.assertEqual(s.purge_btn.text(), "Purgar vencidos")
+
+
+class TestBitacora(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_consulta_vacia_no_es_sin_conexion(self):
+        from app.screens.bitacora_screen import BitacoraScreen
+        with patch.object(repository, "bitacora_rows", return_value=[]):
+            pantalla = BitacoraScreen(lambda x: None, lambda: None)
+        self.assertEqual(pantalla.status_label.text(),
+                         "0 registros · base de datos")
+
+    def test_error_de_conexion_si_lo_dice(self):
+        from app.screens.bitacora_screen import BitacoraScreen
+        with patch.object(repository, "bitacora_rows",
+                          side_effect=DBError("sin conexion")):
+            pantalla = BitacoraScreen(lambda x: None, lambda: None)
+        self.assertEqual(pantalla.status_label.text(),
+                         "0 registros · sin conexión")
+
+
+class TestPrediccionFallback(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_fallback_desactiva_guardar(self):
+        from app.screens import prediction_screen as ps
+        with patch.object(repository, "activa", return_value=True), \
+                patch.object(ps, "async_disponible", return_value=True), \
+                patch.object(ps, "run_async",
+                             side_effect=lambda _o, _f, _d, on_error:
+                             on_error("fallo")):
+            pantalla = ps.PredictionScreen(lambda x: None, lambda: None)
+        self.assertFalse(pantalla._online)
+        self.assertFalse(pantalla.save_btn.isEnabled())
+        self.assertIn("ejemplo", pantalla.status_label.text())
+
+
+class TestErroresCrudosInventario(unittest.TestCase):
+    """Un error del motor SQL no debe tumbar la pantalla."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    @staticmethod
+    def _error_sql():
+        from mysql.connector.errors import ProgrammingError
+        return ProgrammingError(msg="procedure not found")
+
+    def test_purgar_avisa_sin_escapar(self):
+        from app.screens.inventory_screen import InventoryScreen
+        pantalla = InventoryScreen(lambda x: None, lambda: None)
+        with patch.object(repository, "purge_expired",
+                          side_effect=self._error_sql()), \
+                patch("app.screens.inventory_screen.QMessageBox.warning") as aviso:
+            pantalla._purge_expired()
+        aviso.assert_called_once()
+
+    def test_guardar_stock_avisa_sin_escapar(self):
+        from app.screens.inventory_screen import InventoryScreen
+        pantalla = InventoryScreen(lambda x: None, lambda: None)
+        pantalla.inventory[0]["id_ingrediente"] = 1
+        nombre = pantalla.inventory[0]["nombre"]
+        pantalla._reload_table()
+        fila = next(r for r in range(pantalla.table.rowCount())
+                    if pantalla.table.item(r, 0).text() == nombre)
+        with patch.object(repository, "activa", return_value=True), \
+                patch.object(repository, "save_stock",
+                             side_effect=self._error_sql()), \
+                patch("app.screens.inventory_screen.QMessageBox.warning") as aviso:
+            pantalla._on_cell_changed(fila, 1)
+        aviso.assert_called_once()
 
 
 if __name__ == "__main__":
