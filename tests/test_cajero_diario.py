@@ -1,7 +1,11 @@
 """Cajero automatico: guard de entorno demo y reabasto solo de ordenes propias."""
+import contextlib
+import io
+import logging
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -48,6 +52,36 @@ class TestGuardEntorno(unittest.TestCase):
             codigo = cajero_diario.main()
         self.assertEqual(codigo, 3)
         venta.assert_not_called()
+
+
+class TestLogging(unittest.TestCase):
+    def test_log_bloqueado_usa_stderr_y_no_lanza(self):
+        salida = io.StringIO()
+        with patch.object(cajero_diario.logging, "FileHandler",
+                          side_effect=PermissionError("bloqueado")), \
+                patch.object(cajero_diario.logging, "basicConfig") as configurar, \
+                contextlib.redirect_stderr(salida):
+            try:
+                cajero_diario._configurar_logging()
+            except OSError as exc:
+                self.fail(f"El log bloqueado no debe tumbar la corrida: {exc}")
+
+        handlers = configurar.call_args.kwargs["handlers"]
+        self.assertEqual(len(handlers), 1)
+        self.assertIsInstance(handlers[0], logging.StreamHandler)
+        self.assertIn("No se pudo abrir", salida.getvalue())
+
+
+class TestLanzadorBat(unittest.TestCase):
+    def test_delega_en_al_encender_sin_redirigir_al_log(self):
+        ruta = (Path(__file__).resolve().parent.parent
+                / "scripts" / "run_cajero_diario.bat")
+        contenido = ruta.read_text(encoding="utf-8")
+
+        self.assertIn("%~dp0al_encender.ps1", contenido)
+        self.assertNotIn(">>", contenido)
+        self.assertNotIn("2>&1", contenido)
+        self.assertNotIn("cajero_diario.py", contenido)
 
 
 class TestReabastoPropio(unittest.TestCase):

@@ -144,6 +144,12 @@ complementan:
   (`CosechaCajeroAlEncender.bat`), que lanza el mismo
   `scripts\al_encender.ps1` como respaldo.
 
+Para una corrida diaria a las 08:00, `scripts\registrar_tarea.ps1` registra la
+tarea `CosechaCajeroDiario`, que ejecuta `scripts\run_cajero_diario.bat`. Ese
+lanzador delega también en `al_encender.ps1` (mismo candado y espera de MySQL)
+y no redirige la salida al log, porque Python ya escribe allí y Windows no
+permite dos escritores a la vez.
+
 El script espera hasta ~2 minutos a que MySQL esté disponible, así que puede
 tardar un poco en generar las ventas del día. Un candado
 (`%LOCALAPPDATA%\Cosecha\cajero.lock`) impide que la tarea y el acceso del

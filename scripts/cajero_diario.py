@@ -60,12 +60,18 @@ def _entorno_demo() -> bool:
 
 
 def _configurar_logging() -> None:
-    """El detalle queda en scripts/cajero_diario.log; consola si es manual."""
+    """El detalle queda en scripts/cajero_diario.log; consola si es manual.
+
+    Un log bloqueado (por ejemplo, un lanzador que redirige al mismo archivo)
+    no debe tumbar la corrida ni ocultar el resumen: se cae a stderr.
+    """
     log_path = Path(__file__).resolve().parent / "cajero_diario.log"
-    handlers: list[logging.Handler] = [
-        logging.FileHandler(log_path, encoding="utf-8"),
-    ]
-    if sys.stdout.isatty():
+    handlers: list[logging.Handler] = []
+    try:
+        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+    except OSError as exc:
+        print(f"No se pudo abrir {log_path}: {exc}", file=sys.stderr)
+    if sys.stdout.isatty() or not handlers:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(
         level=logging.INFO,
