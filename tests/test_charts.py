@@ -114,6 +114,31 @@ class TestReporteVentas(unittest.TestCase):
         self.assertEqual(SalesScreen._comparison_text(actual, None), "")
 
 
+class TestCobertura(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_colorea_por_dias_aunque_el_estado_sea_optimo(self):
+        from matplotlib.colors import to_rgba
+
+        from app import styles
+        from app.screens.dashboard_screen import DashboardScreen
+        from app.widgets.mpl_canvas import MplCanvas
+
+        canvas = MplCanvas(height=2.3)
+        inventario = [
+            {"nombre": "Holgado", "diasAgotar": 10.0, "estado": "optimo"},
+            {"nombre": "Aviso", "diasAgotar": 2.0, "estado": "optimo"},
+            {"nombre": "Critico", "diasAgotar": 0.5, "estado": "optimo"},
+        ]
+        DashboardScreen._draw_coverage(canvas, inventario, expanded=True)
+        colores = [p.get_facecolor() for p in canvas.axes.patches]
+        self.assertEqual(
+            colores,
+            [to_rgba(styles.MENTA), to_rgba(styles.HONEY), to_rgba(styles.CLAY)])
+
+
 class TestTarjetaGrafica(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

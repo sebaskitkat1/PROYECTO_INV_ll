@@ -191,6 +191,7 @@ class DashboardScreen(QWidget):
         total = len(con_consumo)
         subtitle = (f"6 de {total} más urgentes" if total > 6
                     else f"{total} ingredientes con consumo")
+        subtitle += " · rojo ≤1 día, ámbar ≤3"
         card = PreviewChartCard(
             "Cobertura de inventario",
             subtitle,
@@ -275,13 +276,7 @@ class DashboardScreen(QWidget):
             return
         names = [i["nombre"].split("(")[0].strip() for i in items]
         values = [float(i["diasAgotar"]) for i in items]
-        color_por_estado = {
-            "critico": styles.CLAY,
-            "advertencia": styles.HONEY,
-            "optimo": styles.MENTA,
-            "sin_minimo": styles.FAINT,
-        }
-        colors = [color_por_estado.get(i.get("estado"), styles.MENTA_SOFT) for i in items]
+        colors = [DashboardScreen._coverage_color(i) for i in items]
         ax.barh(names, values, color=colors, height=0.62)
         ax.set_xlabel("días de cobertura", fontsize=9, color=styles.MUTED)
         ax.tick_params(axis="y", labelsize=9 if expanded else 8)
@@ -294,6 +289,24 @@ class DashboardScreen(QWidget):
                 )
             ax.set_xlim(0, tope * 1.14)
         canvas.redraw()
+
+    @staticmethod
+    def _coverage_color(item: dict) -> str:
+        """Color por urgencia real: días de cobertura, no solo stock/mínimo."""
+        if item.get("estado") == "sin_minimo":
+            return styles.FAINT
+        dias = item.get("diasAgotar")
+        if dias is not None:
+            dias = float(dias)
+            if dias <= 1:
+                return styles.CLAY
+            if dias <= 3:
+                return styles.HONEY
+        if item.get("estado") == "critico":
+            return styles.CLAY
+        if item.get("estado") == "advertencia":
+            return styles.HONEY
+        return styles.MENTA
 
     @staticmethod
     def _subtitle() -> str:
