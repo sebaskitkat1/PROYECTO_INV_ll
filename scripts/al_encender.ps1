@@ -21,16 +21,47 @@ function Write-Estado([string]$texto) {
     Set-Content -Path $estado -Value "[$timestamp] $texto" -Encoding utf8
 }
 
-# Candado atomico: si otra corrida esta en curso, esta se omite.
+# Candado atomico con deteccion de restos: un cierre forzado no debe
+# bloquear el cajero para siempre.
+function Test-LockActivo([string]$ruta) {
+    if (-not (Test-Path -LiteralPath $ruta)) { return $false }
+    $item = Get-Item -LiteralPath $ruta -ErrorAction SilentlyContinue
+    if (-not $item) { return $false }
+    if (((Get-Date) - $item.LastWriteTime).TotalHours -ge 2) { return $false }
+    $primera = Get-Content -LiteralPath $ruta -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    $pidLock = 0
+    if ($primera -and [int]::TryParse(
+            ([string]$primera).Trim().Split(" ")[0], [ref]$pidLock)) {
+        return [bool](Get-Process -Id $pidLock -ErrorAction SilentlyContinue)
+    }
+    return $true
+}
+
 $lockStream = $null
-try {
-    $lockStream = [System.IO.File]::Open(
-        $lock, [System.IO.FileMode]::CreateNew,
-        [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-} catch {
-    Write-Log "Ya hay otra corrida del cajero en curso; se omite esta."
+for ($intento = 1; $intento -le 2; $intento++) {
+    try {
+        $lockStream = [System.IO.File]::Open(
+            $lock, [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        break
+    } catch {
+        if ($intento -eq 1 -and -not (Test-LockActivo $lock)) {
+            Write-Log "Candado viejo detectado; se elimina y se reintenta."
+            Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
+            continue
+        }
+        Write-Log "Ya hay otra corrida del cajero en curso; se omite esta."
+        exit 0
+    }
+}
+if (-not $lockStream) {
+    Write-Log "No se pudo crear el candado; se omite esta corrida."
     exit 0
 }
+$datosLock = [System.Text.Encoding]::UTF8.GetBytes("$PID`n")
+$lockStream.Write($datosLock, 0, $datosLock.Length)
+$lockStream.Flush()
 
 try {
     $inicio = Get-Date
@@ -100,5 +131,9 @@ finally {
     if ($lockStream) {
         $lockStream.Close()
     }
-    Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
+    $contenido = Get-Content -LiteralPath $lock -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($contenido -and ([string]$contenido).Trim() -eq "$PID") {
+        Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
+    }
 }
