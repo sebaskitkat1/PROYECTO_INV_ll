@@ -25,7 +25,7 @@ python main.py
 ## Pruebas y calidad
 
 ```powershell
-python -m unittest discover tests   # 164 pruebas
+python -m unittest discover tests   # 180 pruebas
 python -m ruff check .
 python -m mypy app/data
 ```

@@ -2,7 +2,9 @@ COSECHA - INSTALACION
 
 1. Abre "Configurar base de datos" en el menu Inicio y edita .env:
    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD y DB_NAME.
-   Opcional: DB_SSL=1 exige TLS y DB_POOL_SIZE ajusta el pool (4 por defecto).
+   TLS viene activo por defecto (MySQL 8 lo exige con caching_sha2_password);
+   usa DB_SSL=0 solo si el servidor no lo soporta. DB_POOL_SIZE ajusta el
+   pool (4 por defecto).
    Usa DB_USER=cosecha_app (nunca root) y la misma contrasena que pusiste
    en db\crear_usuario_app.sql.
    Si no configuras MySQL, la app abre en modo ejemplo y no guarda cambios.
