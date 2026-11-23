@@ -148,7 +148,7 @@ class DashboardScreen(QWidget):
                 on_click=lambda: self.on_navigate("sales"),
             ),
             KpiCard(
-                "Stock en riesgo", kpis["stock_en_riesgo"]["valor"], accent=styles.CLAY,
+                "Por pedir", kpis["por_pedir"]["valor"], accent=styles.CLAY,
                 on_click=lambda: self.on_navigate("inventory"),
             ),
         ]

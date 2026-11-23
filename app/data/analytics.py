@@ -69,6 +69,9 @@ def dashboard_kpis(detail: list[dict], last_7: list[dict], inventory: list[dict]
     ayer = dias[-2] if len(dias) > 1 else 0.0
     var = pct_change(hoy, ayer)
     criticos = sum(1 for i in inventory if i.get("estado") == "critico")
+    por_pedir = sum(
+        1 for i in inventory
+        if (i.get("sugerido") or 0) > 0 or i.get("estado") == "critico")
     return {
         "ventas_hoy": {
             "valor": fmt_money(hoy),
@@ -78,6 +81,7 @@ def dashboard_kpis(detail: list[dict], last_7: list[dict], inventory: list[dict]
         "ticket_promedio": {"valor": fmt_money(tot["ticket"]), "delta": None, "positivo": True},
         "productos_vendidos": {"valor": fmt_qty(tot["unidades"]), "delta": None, "positivo": True},
         "stock_en_riesgo": {"valor": str(criticos), "delta": None, "positivo": None},
+        "por_pedir": {"valor": str(por_pedir), "delta": None, "positivo": None},
     }
 
 

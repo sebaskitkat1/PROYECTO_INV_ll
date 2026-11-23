@@ -83,6 +83,21 @@ class TestUsuariosDemo(unittest.TestCase):
             self.assertIsNone(repository.user_id_by_email("nadie@x"))
 
 
+class TestDashboardKpis(unittest.TestCase):
+    def test_por_pedir_sale_de_las_ordenes_sugeridas(self):
+        base = {"ventas_hoy": 0, "ventas_ayer": 0, "variacion_pct": None,
+                "ticket_promedio": None, "unidades_hoy": 0,
+                "stock_en_riesgo": 0}
+        with patch.object(repository, "_hay_base"), \
+                patch.object(repository, "sucursal_id", return_value=1), \
+                patch.object(repository.db, "fetchall",
+                             side_effect=[[base], [{"n": 16}]]) as consulta:
+            kpis = repository.dashboard_kpis()
+
+        self.assertEqual(kpis["por_pedir"]["valor"], "16")
+        self.assertEqual(consulta.call_count, 2)
+
+
 class TestSalesLast7Days(unittest.TestCase):
     def test_incluye_dias_sin_venta_en_cero(self):
         import datetime

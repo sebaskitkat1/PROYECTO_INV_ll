@@ -508,6 +508,10 @@ def dashboard_kpis() -> dict:
         "SELECT ventas_hoy, ventas_ayer, variacion_pct, ticket_promedio, "
         "unidades_hoy, stock_en_riesgo FROM v_kpi_dashboard WHERE id_sucursal = %s",
         (sucursal_id(),))[0]
+    # misma fuente que el aviso de inventario: lo que conviene pedir hoy
+    por_pedir = db.fetchall(
+        "SELECT COUNT(*) AS n FROM v_orden_compra_sugerida "
+        "WHERE id_sucursal = %s AND sugerido > 0", (sucursal_id(),))[0]
     var = f.get("variacion_pct")
     var = None if var is None else float(var)
     return {
@@ -520,6 +524,8 @@ def dashboard_kpis() -> dict:
                                "delta": None, "positivo": True},
         "stock_en_riesgo": {"valor": str(int(f.get("stock_en_riesgo") or 0)),
                             "delta": None, "positivo": None},
+        "por_pedir": {"valor": str(int(por_pedir.get("n") or 0)),
+                      "delta": None, "positivo": None},
     }
 
 
