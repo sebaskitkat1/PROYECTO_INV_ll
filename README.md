@@ -95,7 +95,8 @@ archivo sin `.sql`). `db/init_schema.sql` solo crea la base si no existe y no
 borra datos. `db/dev_reset.sql` borra la base completa y es exclusivo de
 desarrollo: no se distribuye en el instalador. La app debe conectarse como
 `cosecha_app` (SELECT, INSERT, UPDATE y EXECUTE), no como root.
-`DB_SSL=1` exige TLS (recomendado si la base no es local) y `DB_POOL_SIZE`
+TLS viene activo por defecto (MySQL 8 lo exige con `caching_sha2_password`);
+`DB_SSL=0` lo desactiva solo si el servidor no lo soporta. `DB_POOL_SIZE`
 ajusta el pool de conexiones (4 por defecto). Un fallo de conexión se
 recuerda 30 s para no reintentar en cada pantalla; `db.reset_availability()`
 fuerza un reintento inmediato.

@@ -119,8 +119,9 @@ def _pool_size() -> int:
 
 
 def _ssl_args() -> dict:
-    valor = str(os.getenv("DB_SSL", _ENV.get("DB_SSL", "0"))).strip().lower()
-    # DB_SSL=1 exige TLS; si el servidor no lo soporta, la conexion falla.
+    valor = str(os.getenv("DB_SSL", _ENV.get("DB_SSL", "1"))).strip().lower()
+    # TLS activo por defecto: MySQL 8 con caching_sha2_password lo exige.
+    # DB_SSL=0 lo desactiva solo si el servidor no soporta TLS.
     return {"ssl_disabled": valor not in ("1", "true", "yes", "si")}
 
 

@@ -83,6 +83,28 @@ class TestUsuariosDemo(unittest.TestCase):
             self.assertIsNone(repository.user_id_by_email("nadie@x"))
 
 
+class TestSalesLast7Days(unittest.TestCase):
+    def test_incluye_dias_sin_venta_en_cero(self):
+        import datetime
+        hoy = datetime.date.today()
+        filas_db = [
+            {"fecha": hoy, "ventas": 120.0},
+            {"fecha": hoy - datetime.timedelta(days=2), "ventas": 80.0},
+        ]
+        with patch.object(repository, "_hay_base"), \
+                patch.object(repository, "sucursal_id", return_value=1), \
+                patch.object(repository.db, "fetchall", return_value=filas_db):
+            filas = repository.sales_last_7_days()
+
+        self.assertEqual(len(filas), 7)
+        self.assertEqual(filas[-1]["day"], repository.dia_corto(hoy))
+        self.assertEqual(filas[-1]["ventas"], 120.0)
+        self.assertEqual(filas[-2]["ventas"], 0.0)
+        self.assertEqual(
+            filas[0]["day"],
+            repository.dia_corto(hoy - datetime.timedelta(days=6)))
+
+
 class TestFallback(unittest.TestCase):
     def test_sin_base_usa_mock(self):
         with self.assertRaises(DBError):

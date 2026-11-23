@@ -202,13 +202,24 @@ def map_inventario_row(r: dict) -> dict:
 
 
 def sales_last_7_days() -> list[dict]:
-    """Dias con venta dentro de los ultimos 7 dias calendario."""
+    """Los ultimos 7 dias calendario, con 0 en los dias sin venta."""
     _hay_base()
-    inicio = datetime.date.today() - datetime.timedelta(days=6)
+    hoy = datetime.date.today()
+    inicio = hoy - datetime.timedelta(days=6)
     filas = db.fetchall(
         "SELECT fecha, ventas FROM v_ventas_diarias WHERE id_sucursal = %s "
         "AND fecha >= %s ORDER BY fecha", (sucursal_id(), inicio))
-    return [{"day": dia_corto(r["fecha"]), "ventas": float(r["ventas"] or 0)} for r in filas]
+    por_fecha: dict[datetime.date, float] = {}
+    for r in filas:
+        fecha = r["fecha"]
+        if isinstance(fecha, datetime.datetime):
+            fecha = fecha.date()
+        por_fecha[fecha] = float(r["ventas"] or 0)
+    return [
+        {"day": dia_corto(inicio + datetime.timedelta(days=k)),
+         "ventas": por_fecha.get(inicio + datetime.timedelta(days=k), 0.0)}
+        for k in range(7)
+    ]
 
 
 def sales_detail() -> list[dict]:

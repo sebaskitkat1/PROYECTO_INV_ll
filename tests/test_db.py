@@ -1,4 +1,5 @@
 """Cache de disponibilidad de la base: 30 s tras un fallo, sin caducidad tras exito."""
+import os
 import unittest
 from unittest.mock import patch
 
@@ -54,6 +55,25 @@ class TestDisponibilidad(unittest.TestCase):
         db.reset_availability()
         with patch.object(db, "connect", return_value=_Conexion()):
             self.assertTrue(db.available())
+
+
+class TestSSL(unittest.TestCase):
+    """MySQL 8 con caching_sha2_password exige TLS para autenticar."""
+
+    def test_tls_activo_por_defecto(self):
+        with patch.object(db, "_ENV", {}), \
+                patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(db._ssl_args(), {"ssl_disabled": False})
+
+    def test_db_ssl_0_desactiva_tls(self):
+        with patch.object(db, "_ENV", {}), \
+                patch.dict(os.environ, {"DB_SSL": "0"}, clear=True):
+            self.assertEqual(db._ssl_args(), {"ssl_disabled": True})
+
+    def test_db_ssl_1_exige_tls(self):
+        with patch.object(db, "_ENV", {}), \
+                patch.dict(os.environ, {"DB_SSL": "1"}, clear=True):
+            self.assertEqual(db._ssl_args(), {"ssl_disabled": False})
 
 
 if __name__ == "__main__":
